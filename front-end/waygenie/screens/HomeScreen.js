@@ -16,13 +16,7 @@ import axios from "axios";
 import MapWrapper from "./MapWrapper";
 import * as Location from "expo-location";
 
-// Giả định file này chứa dữ liệu phương tiện, ví dụ:
-// export const transportModes = [
-//   { key: "1", label: "Ô tô", mapboxProfile: "driving" },
-//   { key: "2", label: "Xe máy", mapboxProfile: "driving" },
-//   { key: "3", label: "Đi bộ", mapboxProfile: "walking" },
-//   { key: "4", label: "Xe đạp", mapboxProfile: "cycling" },
-// ];
+// Giả định file này chứa dữ liệu phương tiện
 import { transportModes } from "../data/transportModes";
 
 const MAPBOX_PUBLIC_ACCESS_TOKEN =
@@ -181,6 +175,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Form Container (Control Panel) */}
       <View style={styles.formContainer}>
         <ScrollView keyboardShouldPersistTaps="handled">
           <Text style={styles.title}>WayGenie 🚀</Text>
@@ -276,6 +271,7 @@ export default function HomeScreen() {
         </ScrollView>
       </View>
 
+      {/* Map Container */}
       <View style={styles.mapContainer}>
         <MapWrapper
           startCoords={startCoords}
@@ -289,16 +285,24 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, flexDirection: "column" },
+  container: {
+    flex: 1,
+    // Thay đổi từ "column" sang "row" để chia 2 cột trên Web/lớn hơn
+    flexDirection:
+      Platform.OS === "web" || window.innerWidth > 768 ? "row" : "column",
+  },
   formContainer: {
+    flex: 1, // Chiếm 1 phần
     padding: 20,
     backgroundColor: "#f8f8f8",
-    borderBottomWidth: 1,
+    borderBottomWidth: Platform.OS === "web" || window.innerWidth > 768 ? 0 : 1, // Bỏ border dưới trên web
+    borderRightWidth: Platform.OS === "web" || window.innerWidth > 768 ? 1 : 0, // Thêm border phải trên web
     borderBottomColor: "#eee",
+    borderRightColor: "#eee",
     paddingTop: Platform.OS === "android" ? 40 : 60,
   },
   mapContainer: {
-    flex: 1,
+    flex: 3, // Chiếm 1 phần còn lại
   },
   input: {
     borderWidth: 1,
@@ -325,8 +329,6 @@ const styles = StyleSheet.create({
     padding: 12,
     borderBottomWidth: 1,
     borderColor: "#eee",
-    // No need for 'cursor' property in React Native StyleSheet
-    // cursor: "pointer",
   },
   title: {
     fontSize: 28,
