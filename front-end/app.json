@@ -24,7 +24,9 @@
       "favicon": "./assets/images/favicon.png",
       "build": {
         "babel": {
-          "include": ["node_modules/react-map-gl"]
+          "include": [
+            "node_modules/react-map-gl"
+          ]
         },
         "compiler": "babel"
       }
@@ -45,7 +47,8 @@
           "RNMapboxMapsDownloadToken": "sk.eyJ1IjoiYjIxMTAxMzQiLCJhIjoiY21iNHd2anc3MXF4cDJqc2E3eDJxbHFraCJ9.GxNpl-SQ6b_JZ2OJ3Yc82w",
           "RNMapboxMapsAccessToken": "pk.eyJ1IjoiYjIxMTAxMzQiLCJhIjoiY21iNHdrOXhtMWFrNjJpcTNubjJpMm1ubiJ9.vNGTPpbwgT8y67WhexdpJg"
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experimental": {
       "router": false
