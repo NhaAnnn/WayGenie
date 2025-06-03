@@ -3,9 +3,9 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { NavigationContainer } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
-import HomeScreen from "../screens/web/HomeScreen";
+import HomeScreen from "../screens/HomeScreen";
 import LoginScreen from "../screens/LoginScreen";
-import AdminDashboardScreen from "../screens/web/AdminDashboardScreen";
+import AdminDashboardScreen from "../screens/AdminDashboardScreen";
 
 // THÊM DÒNG NÀY ĐỂ IMPORT CÁC COMPONENT TỪ REACT-NATIVE
 import { View, ActivityIndicator } from "react-native";
