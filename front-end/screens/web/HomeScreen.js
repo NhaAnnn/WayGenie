@@ -17,7 +17,7 @@ import MapWrapper from "./MapWrapper";
 import * as Location from "expo-location";
 
 // Giả định file này chứa dữ liệu phương tiện
-import { transportModes } from "../data/transportModes";
+import { transportModes } from "../../data/transportModes";
 
 const MAPBOX_PUBLIC_ACCESS_TOKEN =
   "pk.eyJ1IjoiYjIxMTAxMzQiLCJhIjoiY21iNHdrOXhtMWFrNjJpcTNubjJpMm1ubiJ9.vNGTPpbwgT8y67WhexdpJg";

@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, Button, StyleSheet } from "react-native";
-import { useAuth } from "../context/AuthContext"; // Import context
+import { useAuth } from "../../context/AuthContext"; // Import context
 
 export default function AdminDashboardScreen() {
   const { logout } = useAuth(); // Lấy hàm logout từ context

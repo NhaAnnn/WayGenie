@@ -8,7 +8,7 @@ const BASE_URL = "http://localhost:5000/api/auth";
 
 export const AuthContext = createContext();
 
-const TOKEN_KEY = "userToken"; // Khai báo một hằng số cho key
+const TOKEN_KEY = "userToken";
 
 // Hàm lưu trữ an toàn (dựa vào nền tảng)
 const saveToken = async (token) => {
