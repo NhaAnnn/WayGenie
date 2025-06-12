@@ -14,13 +14,13 @@ import HomeScreen from "../screens/user/HomeScreen";
 import CurrentStatusMapScreen from "../screens/user/CurrentStatusMapScreen"; // Changed from screens/CurrentStatusMapScreen
 import SimulationMapScreen from "../screens/user/SimulationMapScreen"; // Changed from screens/SimulationMapScreen
 
-// --- NEW/UPDATED ADMIN SCREENS ---
-import AdminDashboardScreen from "../screens/admin/AdminDashboardScreen"; // New dashboard for admin
-import AdminFeaturesScreen from "../screens/admin/AdminFeaturesScreen"; // Renamed from AdminScreen
-import UserManagementScreen from "../screens/admin/UserManagementScreen";
-import AnnouncementsScreen from "../screens/admin/AnnouncementsScreen";
-import SimulatedTrafficScreen from "../screens/admin/SimulatedTrafficScreen"; // New screen for user management
-import ConfigureRouteScreen from "../screens/admin/ConfigureRouteScreen";
+// // --- NEW/UPDATED ADMIN SCREENS ---
+// import AdminDashboardScreen from "../screens/admin/AdminDashboardScreen"; // New dashboard for admin
+// import AdminFeaturesScreen from "../screens/admin/AdminFeaturesScreen"; // Renamed from AdminScreen
+// import UserManagementScreen from "../screens/admin/UserManagementScreen";
+// import AnnouncementsScreen from "../screens/admin/AnnouncementsScreen";
+// import SimulatedTrafficScreen from "../screens/admin/SimulatedTrafficScreen"; // New screen for user management
+// import ConfigureRouteScreen from "../screens/admin/ConfigureRouteScreen";
 // New screen for route configuration
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator(); // Sửa lỗi chính tả ở đây
@@ -68,24 +68,24 @@ function AppStack() {
 }
 
 // Stack Navigator cho quản trị viên
-function AdminStack() {
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
-      <Stack.Screen name="AdminFeatures" component={AdminFeaturesScreen} />
-      <Stack.Screen name="UserManagement" component={UserManagementScreen} />
-      <Stack.Screen
-        name="SimulatedTraffic"
-        component={SimulatedTrafficScreen}
-      />
-      <Stack.Screen name="Announcements" component={AnnouncementsScreen} />
-      <Stack.Screen
-        name="ConfigureRouteScreen"
-        component={ConfigureRouteScreen}
-      />
-    </Stack.Navigator>
-  );
-}
+// function AdminStack() {
+//   return (
+//     // <Stack.Navigator screenOptions={{ headerShown: false }}>
+//     //   <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
+//     //   <Stack.Screen name="AdminFeatures" component={AdminFeaturesScreen} />
+//     //   <Stack.Screen name="UserManagement" component={UserManagementScreen} />
+//       <Stack.Screen
+//         name="SimulatedTraffic"
+//         component={SimulatedTrafficScreen}
+//       />
+//       <Stack.Screen name="Announcements" component={AnnouncementsScreen} />
+//       <Stack.Screen
+//         name="ConfigureRouteScreen"
+//         component={ConfigureRouteScreen}
+//       />
+//     </Stack.Navigator>
+//   );
+// }
 
 // Stack Navigator cho xác thực
 function AuthStack() {
