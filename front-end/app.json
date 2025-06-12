@@ -1,61 +1,33 @@
 {
   "expo": {
-    "name": "WayGenie",
-    "slug": "WayGenie",
+    "name": "waygenie",
+    "slug": "waygenie",
     "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
-    "userInterfaceStyle": "automatic",
- 
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "package": "com.waygenie.app"
-    },
-    "web": {
-      "bundler": "webpack",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png",
-      "build": {
-        "babel": {
-          "include": [
-            "node_modules/react-map-gl"
-          ]
-        },
-        "compiler": "babel"
-      }
-    },
+    "jsEngine": "hermes",
+    "scheme": "com.trongnhan1705.waygenie",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "plugins": [
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
-        }
-      ],
       [
         "@rnmapbox/maps",
         {
-          "RNMapboxMapsDownloadToken": "sk.eyJ1IjoiYjIxMTAxMzQiLCJhIjoiY21iNHd2anc3MXF4cDJqc2E3eDJxbHFraCJ9.GxNpl-SQ6b_JZ2OJ3Yc82w",
+          "RNMapboxMapsDownloadToken": "sk.eyJ1IjoiYjIxMTAxMzQiLCJhIjoiY21iajR5Z3J4MGJ3eTJrcXh2ZGNmMnAycSJ9.tsvGd1KpANpWjlRJFIR34Q",
           "RNMapboxMapsAccessToken": "pk.eyJ1IjoiYjIxMTAxMzQiLCJhIjoiY21iNHdrOXhtMWFrNjJpcTNubjJpMm1ubiJ9.vNGTPpbwgT8y67WhexdpJg"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Show current location on map."
         }
       ],
       "expo-secure-store"
     ],
-    
-    "extra": {
-      "eas": {
-        "projectId": "91c8e9f5-6380-4cbd-9fe4-8dd7ff6798a7"
-      }
-    },
-    "owner": "trongnhan1705"
+    "android": {
+      "package": "com.trongnhan1705.waygenie"
+    }
   }
 }

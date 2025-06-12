@@ -1,60 +1,106 @@
 // navigation/AppNavigator.js
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { NavigationContainer } from "@react-navigation/native";
-import { useAuth } from "../context/AuthContext";
-import HomeScreen from "../screens/HomeScreen";
-import LoginScreen from "../screens/LoginScreen";
-import AdminDashboardScreen from "../screens/AdminDashboardScreen";
-
-// THÊM DÒNG NÀY ĐỂ IMPORT CÁC COMPONENT TỪ REACT-NATIVE
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs"; // Sửa lỗi chính tả ở đây
+import { Ionicons } from "@expo/vector-icons";
+import { Platform } from "react-native";
 import { View, ActivityIndicator } from "react-native";
 
+import { useAuth } from "../context/AuthContext";
+
+// Import tất cả các màn hình, đảm bảo đường dẫn chính xác
+import LoginScreen from "../screens/LoginScreen";
+import HomeScreen from "../screens/user/HomeScreen";
+import CurrentStatusMapScreen from "../screens/user/CurrentStatusMapScreen"; // Changed from screens/CurrentStatusMapScreen
+import SimulationMapScreen from "../screens/user/SimulationMapScreen"; // Changed from screens/SimulationMapScreen
+
+// --- NEW/UPDATED ADMIN SCREENS ---
+import AdminDashboardScreen from "../screens/admin/AdminDashboardScreen"; // New dashboard for admin
+import AdminFeaturesScreen from "../screens/admin/AdminFeaturesScreen"; // Renamed from AdminScreen
+import UserManagementScreen from "../screens/admin/UserManagementScreen";
+import AnnouncementsScreen from "../screens/admin/AnnouncementsScreen";
+import SimulatedTrafficScreen from "../screens/admin/SimulatedTrafficScreen"; // New screen for user management
+import ConfigureRouteScreen from "../screens/admin/ConfigureRouteScreen"; // New screen for route configuration
 const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator(); // Sửa lỗi chính tả ở đây
 
+// Tab Navigator cho người dùng thông thường
+function AppTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
+          if (route.name === "Trang chủ") {
+            iconName = focused ? "home" : "home-outline";
+          } else if (route.name === "Hiện Trạng") {
+            iconName = focused ? "map" : "map-outline";
+          } else if (route.name === "Mô Phỏng") {
+            iconName = focused ? "analytics" : "analytics-outline";
+          }
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+        tabBarActiveTintColor: "#007BFF",
+        tabBarInactiveTintColor: "gray",
+        headerShown: false, // Ẩn header mặc định cho mỗi màn hình tab
+        tabBarStyle: {
+          height: Platform.OS === "ios" ? 90 : 60,
+          paddingBottom: Platform.OS === "ios" ? 20 : 0,
+        },
+      })}
+    >
+      <Tab.Screen name="Trang chủ" component={HomeScreen} />
+      <Tab.Screen name="Hiện Trạng" component={CurrentStatusMapScreen} />
+      <Tab.Screen name="Mô Phỏng" component={SimulationMapScreen} />
+    </Tab.Navigator>
+  );
+}
+
+// Stack Navigator cho người dùng thông thường
 function AppStack() {
-  // Các màn hình cho người dùng đã đăng nhập (cả User và Admin)
   return (
-    <Stack.Navigator>
-      <Stack.Screen
-        name="Home"
-        component={HomeScreen}
-        options={{ headerShown: false }}
-      />
-      {/* Các màn hình khác của ứng dụng */}
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MainTabs" component={AppTabs} />
+      {/* Thêm các màn hình khác không nằm trong tab bar tại đây nếu cần */}
     </Stack.Navigator>
   );
 }
 
+// Stack Navigator cho quản trị viên
 function AdminStack() {
-  // Các màn hình chỉ dành cho Admin
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
-      {/* Các màn hình quản trị khác */}
-    </Stack.Navigator>
-  );
-}
-
-function AuthStack() {
-  // Màn hình đăng nhập/đăng ký
-  return (
-    <Stack.Navigator>
+      <Stack.Screen name="AdminFeatures" component={AdminFeaturesScreen} />
+      <Stack.Screen name="UserManagement" component={UserManagementScreen} />
       <Stack.Screen
-        name="Login"
-        component={LoginScreen}
-        options={{ headerShown: false }}
+        name="SimulatedTraffic"
+        component={SimulatedTrafficScreen}
       />
-      {/* Nếu có màn hình đăng ký: <Stack.Screen name="Register" component={RegisterScreen} /> */}
+      <Stack.Screen name="Announcements" component={AnnouncementsScreen} />
+      <Stack.Screen
+        name="ConfigureRouteScreen"
+        component={ConfigureRouteScreen}
+      />
     </Stack.Navigator>
   );
 }
 
+// Stack Navigator cho xác thực
+function AuthStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Login" component={LoginScreen} />
+    </Stack.Navigator>
+  );
+}
+
+// Đây là component chính của AppNavigator, xử lý việc hiển thị Stack phù hợp
 export default function AppNavigator() {
-  const { authToken, userRole, isLoading } = useAuth();
+  const { authToken, userRole, isLoading } = useAuth(); // Giả định useAuth cung cấp authToken và userRole
 
   if (isLoading) {
-    // Hiển thị màn hình tải (splash screen) trong khi kiểm tra token
+    // Điều này sẽ được hiển thị khi AuthContext đang kiểm tra trạng thái ban đầu
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
         <ActivityIndicator size="large" color="#0000ff" />
@@ -63,18 +109,17 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
-      {authToken ? ( // Nếu có token, tức là đã đăng nhập
-        userRole === "admin" ? ( // Nếu vai trò là admin
-          <AdminStack />
+    <>
+      {authToken ? ( // Nếu người dùng đã xác thực
+        userRole === "admin" ? ( // Kiểm tra vai trò
+          <AdminStack /> // Hiển thị các màn hình admin
         ) : (
-          // Nếu vai trò là user hoặc khác admin
-          <AppStack />
+          <AppStack /> // Hiển thị các màn hình ứng dụng thông thường (bao gồm các tab)
         )
       ) : (
-        // Nếu không có token, chuyển đến màn hình đăng nhập
-        <AuthStack />
+        // Nếu người dùng chưa xác thực
+        <AuthStack /> // Hiển thị màn hình đăng nhập
       )}
-    </NavigationContainer>
+    </>
   );
 }
