@@ -27,7 +27,16 @@
       "expo-secure-store"
     ],
     "android": {
-      "package": "com.trongnhan1705.waygenie"
+      "package": "com.trongnhan1705.waygenie",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "af0eaa63-688f-4b39-993d-b44d11095a0f"
+      }
     }
   }
 }

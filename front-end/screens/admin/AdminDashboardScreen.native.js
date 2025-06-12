@@ -7,15 +7,37 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  Platform, // Import Platform để điều chỉnh padding cho iOS
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "../../context/AuthContext"; // Import useAuth hook
 
 const AdminDashboardScreen = () => {
   const navigation = useNavigation();
+  const { logout } = useAuth(); // Lấy hàm logout từ AuthContext
 
   const navigateToScreen = (screenName) => {
     navigation.navigate(screenName);
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      "Xác nhận đăng xuất",
+      "Bạn có chắc chắn muốn đăng xuất khỏi ứng dụng?",
+      [
+        {
+          text: "Hủy",
+          style: "cancel",
+        },
+        {
+          text: "Đăng xuất",
+          onPress: () => logout(), // Gọi hàm logout từ AuthContext
+          style: "destructive",
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   return (
@@ -23,7 +45,13 @@ const AdminDashboardScreen = () => {
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
     >
-      <Text style={styles.headerTitle}>Bảng điều khiển Admin</Text>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Bảng điều khiển Admin</Text>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={22} color="#fff" />
+          <Text style={styles.logoutButtonText}>Đăng xuất</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.gridContainer}>
         <TouchableOpacity
@@ -93,18 +121,54 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",
-    paddingTop: 50, // Điều chỉnh padding cho header
   },
   scrollContent: {
     paddingBottom: 20,
     alignItems: "center",
   },
+  header: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#007BFF",
+    paddingTop: Platform.OS === "android" ? 40 : 60, // Adjust padding for status bar
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+    marginBottom: 30, // Thêm khoảng cách với phần grid bên dưới
+  },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 24, // Giảm kích thước tiêu đề một chút để phù hợp với nút logout
     fontWeight: "bold",
-    color: "#007BFF",
+    color: "#fff", // Màu chữ trắng
     textAlign: "center",
-    marginBottom: 30,
+    flex: 1, // Chiếm hết không gian còn lại
+  },
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#e74c3c", // Màu đỏ cam cho nút đăng xuất
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  logoutButtonText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 14,
+    marginLeft: 5,
   },
   gridContainer: {
     flexDirection: "row",

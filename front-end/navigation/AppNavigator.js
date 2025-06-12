@@ -20,7 +20,8 @@ import AdminFeaturesScreen from "../screens/admin/AdminFeaturesScreen"; // Renam
 import UserManagementScreen from "../screens/admin/UserManagementScreen";
 import AnnouncementsScreen from "../screens/admin/AnnouncementsScreen";
 import SimulatedTrafficScreen from "../screens/admin/SimulatedTrafficScreen"; // New screen for user management
-import ConfigureRouteScreen from "../screens/admin/ConfigureRouteScreen"; // New screen for route configuration
+import ConfigureRouteScreen from "../screens/admin/ConfigureRouteScreen";
+// New screen for route configuration
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator(); // Sửa lỗi chính tả ở đây
 
