@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import { StyleSheet, View, Text } from "react-native";
-import ReactMapGL, { Marker, Source, Layer } from "react-map-gl";
+import Map, { Marker, Source, Layer } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 const DEFAULT_POSITION = [106.660172, 10.762622]; // Tọa độ mặc định (TP.HCM)
@@ -9,7 +9,7 @@ const MapWrapper = ({
   startCoords,
   endCoords,
   routes = [],
-  mapboxAccessToken,
+  mapboxAccessToken, // Prop để nhận Access Token
   selectedRouteIndex = 0,
 }) => {
   const mapRef = useRef(null);
@@ -99,7 +99,8 @@ const MapWrapper = ({
   }, [startCoords, endCoords, routes]);
 
   return (
-    <ReactMapGL
+    // Sử dụng component Map
+    <Map
       ref={mapRef}
       mapboxAccessToken={mapboxAccessToken}
       initialViewState={viewport}
@@ -202,7 +203,7 @@ const MapWrapper = ({
           </Source>
         );
       })}
-    </ReactMapGL>
+    </Map>
   );
 };
 
