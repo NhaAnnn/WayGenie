@@ -78,7 +78,7 @@ const App = () => {
 
             <TouchableOpacity
               style={styles.navItem}
-              onPress={() => navigation.navigate("MapScreen")}
+              onPress={() => navigation.navigate("CurrentStatusMap")}
               onMouseEnter={() => handleHoverIn("Hiện trạng")}
               onMouseLeave={handleHoverOut}
             >
@@ -242,13 +242,13 @@ const App = () => {
           </View>
 
           {/* Right Content (50%) with left-aligned map */}
-          {/* <View style={styles.rightContent}>
+          <View style={styles.rightContent}>
             <Image
               source={require("../../assets/images/map.jpg")}
               style={styles.mapImage}
               resizeMode="contain"
             />
-          </View> */}
+          </View>
         </View>
 
         {/* Greeting Section */}

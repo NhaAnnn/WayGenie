@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,100 +7,264 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Dimensions,
+  ScrollView,
 } from "react-native";
-import { useAuth } from "../context/AuthContext"; // Import context
+import { useAuth } from "../context/AuthContext";
+import { useNavigation } from "@react-navigation/native";
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const { login, isLoading, error } = useAuth(); // Lấy hàm login, isLoading, error từ context
+  const [dimensions, setDimensions] = useState(Dimensions.get("window"));
+  const { login, isLoading, error } = useAuth();
+
+  const navigation = useNavigation();
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener("change", ({ window }) => {
+      setDimensions(window);
+    });
+    return () => subscription?.remove();
+  }, []);
 
   const handleLogin = async () => {
-    const result = await login(username, password);
+    const result = await login(email, password);
     if (!result.success) {
-      // Lỗi đã được set trong AuthContext và hiển thị tự động qua `error` state
-      // Hoặc bạn có thể hiển thị Alert.alert(result.error) ở đây
       Alert.alert(
         "Lỗi đăng nhập",
-        result.error || "Có lỗi xảy ra trong quá trình đăng nhập."
+        result.error || "Đã xảy ra lỗi khi đăng nhập."
       );
     }
-    // Nếu thành công, AuthContext sẽ tự động điều hướng (xem App.js bên dưới)
   };
 
+  // Tính toán kích thước dựa trên kích thước màn hình
+  const frameWidth = Math.min(dimensions.width * 0.9, 500); // Tối đa 500px
+  const isSmallScreen = dimensions.width < 400;
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Đăng nhập</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Tên đăng nhập hoặc Email"
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Mật khẩu"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-      {error && <Text style={styles.errorText}>{error}</Text>}
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleLogin}
-        disabled={isLoading}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.container}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled"
       >
-        {isLoading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Đăng nhập</Text>
-        )}
-      </TouchableOpacity>
-    </View>
+        <View style={[styles.frame, { width: frameWidth }]}>
+          {/* Tiêu đề */}
+          <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
+            Đăng nhập
+          </Text>
+
+          {/* Ô nhập email */}
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, isSmallScreen && styles.labelSmall]}>
+              Email
+            </Text>
+            <TextInput
+              style={[styles.input, isSmallScreen && styles.inputSmall]}
+              placeholder="Email"
+              placeholderTextColor="#999"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+          </View>
+
+          {/* Ô nhập mật khẩu */}
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, isSmallScreen && styles.labelSmall]}>
+              Mật khẩu
+            </Text>
+            <TextInput
+              style={[styles.input, isSmallScreen && styles.inputSmall]}
+              placeholder="Nhập mật khẩu"
+              placeholderTextColor="#999"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+          </View>
+
+          <View style={styles.divider} />
+          <View style={styles.forgotPasswordContainer}>
+            <TouchableOpacity>
+              <Text
+                style={[
+                  styles.footerLink,
+                  isSmallScreen && styles.footerLinkSmall,
+                ]}
+              >
+                Quên mật khẩu?
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Nút đăng nhập */}
+          <TouchableOpacity
+            style={[
+              styles.loginButton,
+              isLoading && styles.buttonDisabled,
+              isSmallScreen && styles.loginButtonSmall,
+            ]}
+            onPress={handleLogin}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text
+                style={[
+                  styles.loginButtonText,
+                  isSmallScreen && styles.loginButtonTextSmall,
+                ]}
+              >
+                ĐĂNG NHẬP
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Liên kết đăng ký/quên mật khẩu */}
+          <View style={[styles.footer, isSmallScreen && styles.footerSmall]}>
+            <Text
+              style={[
+                styles.footerText,
+                isSmallScreen && styles.footerTextSmall,
+              ]}
+            >
+              Bạn chưa có tài khoản?
+            </Text>
+            <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+              <Text
+                style={[
+                  styles.footerLink,
+                  isSmallScreen && styles.footerLinkSmall,
+                ]}
+              >
+                {" "}
+                Đăng ký
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#f5f5f5",
+  },
+  scrollContainer: {
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
-    backgroundColor: "#f8f8f8",
+    paddingVertical: 20,
+  },
+  frame: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 25,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "bold",
+    textAlign: "center",
     marginBottom: 30,
     color: "#333",
   },
-  input: {
-    width: "100%",
-    height: 50,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    marginBottom: 15,
-    backgroundColor: "#fff",
+  titleSmall: {
+    fontSize: 20,
+    marginBottom: 20,
   },
-  button: {
-    width: "100%",
-    height: 50,
-    backgroundColor: "#007BFF",
-    justifyContent: "center",
+  inputGroup: {
+    marginBottom: 15,
+  },
+  label: {
+    fontSize: 16,
+    marginBottom: 8,
+    color: "#444",
+  },
+  labelSmall: {
+    fontSize: 14,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 6,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: "#f9f9f9",
+  },
+  inputSmall: {
+    padding: 10,
+    fontSize: 14,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#eee",
+    marginVertical: 15,
+  },
+  loginButton: {
+    backgroundColor: "#007AFF",
+    padding: 14,
+    borderRadius: 6,
     alignItems: "center",
-    borderRadius: 10,
     marginTop: 10,
   },
-  buttonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
+  loginButtonSmall: {
+    padding: 12,
   },
-  errorText: {
-    color: "red",
+  loginButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  loginButtonTextSmall: {
+    fontSize: 14,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
+  },
+  footer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    marginTop: 20,
+  },
+  footerSmall: {
+    marginTop: 15,
+  },
+  footerText: {
+    color: "#666",
+    fontSize: 14,
+  },
+  footerTextSmall: {
+    fontSize: 12,
+  },
+  footerLink: {
+    color: "#007AFF",
+    fontSize: 14,
+  },
+  footerLinkSmall: {
+    fontSize: 12,
+  },
+  forgotPasswordContainer: {
+    alignItems: "flex-end",
     marginBottom: 10,
   },
 });

@@ -12,17 +12,16 @@ import {
   ActivityIndicator,
   Keyboard,
   Dimensions,
+  SafeAreaView,
 } from "react-native";
 import axios from "axios";
-
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import { transportModes } from "../../data/transportModes";
-
 import { MAPBOX_PUBLIC_ACCESS_TOKEN } from "../../secrets.js";
 import MapWrapper from "../../components/MapWrapper";
 
-export default function HomeScreen({ navigation }) {
+export default function CurrentStatusMapScreen({ navigation }) {
   // State for addresses and coordinates
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -33,6 +32,7 @@ export default function HomeScreen({ navigation }) {
   const [routes, setRoutes] = useState([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [mode, setMode] = useState("driving");
+  const [routePreference, setRoutePreference] = useState("fastest");
 
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -44,32 +44,103 @@ export default function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // State for data layers
+  const [layersVisibility, setLayersVisibility] = useState({
+    traffic: true,
+    airQuality: false,
+    incidents: true,
+  });
+
+  const [trafficData, setTrafficData] = useState(null);
+  const [airQualityData, setAirQualityData] = useState(null);
+  const [incidentData, setIncidentData] = useState(null);
+
   const debounceTimeout = useRef(null);
 
-  // Get user's current location on mount
-  useEffect(() => {
-    const getUserLocation = async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Quyền truy cập vị trí bị từ chối",
-          "Ứng dụng cần quyền truy cập vị trí để hoạt động."
-        );
-        return;
-      }
+  // Route preference options
+  const routePreferences = [
+    { id: "fastest", label: "Nhanh nhất", icon: "rocket" },
+    { id: "shortest", label: "Ngắn nhất", icon: "resize" },
+    { id: "eco", label: "Ít ô nhiễm", icon: "leaf" },
+    { id: "less_traffic", label: "Ít tắc đường", icon: "car" },
+  ];
 
-      try {
-        let location = await Location.getCurrentPositionAsync({});
-        const { latitude, longitude } = location.coords;
-        setStartCoords([latitude, longitude]);
-        setStart("Vị trí hiện tại của bạn");
-      } catch (e) {
-        console.error("Lỗi lấy vị trí hiện tại:", e);
-        Alert.alert("Lỗi", "Không thể lấy vị trí hiện tại của bạn.");
-      }
-    };
-    getUserLocation();
-  }, []);
+  // Fetch realtime data for layers
+  const fetchRealtimeData = () => {
+    // Traffic data
+    setTrafficData({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: { status: "congested" },
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [105.84, 21.02],
+              [105.85, 21.03],
+              [105.86, 21.04],
+            ],
+          },
+        },
+        {
+          type: "Feature",
+          properties: { status: "moderate" },
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [105.82, 21.01],
+              [105.83, 21.0],
+            ],
+          },
+        },
+      ],
+    });
+
+    // Air quality data
+    setAirQualityData({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: { pm25: 60, status: "unhealthy" },
+          geometry: { type: "Point", coordinates: [105.83, 21.03] },
+        },
+        {
+          type: "Feature",
+          properties: { pm25: 25, status: "moderate" },
+          geometry: { type: "Point", coordinates: [105.85, 21.01] },
+        },
+      ],
+    });
+
+    // Incident data
+    setIncidentData({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: {
+            type: "accident",
+            description: "Tai nạn",
+            severity: "high",
+            icon: "fire",
+          },
+          geometry: { type: "Point", coordinates: [105.845, 21.025] },
+        },
+        {
+          type: "Feature",
+          properties: {
+            type: "road_closure",
+            description: "Đóng đường",
+            severity: "medium",
+            icon: "roadblock",
+          },
+          geometry: { type: "Point", coordinates: [105.835, 21.015] },
+        },
+      ],
+    });
+  };
 
   // Handle screen resize
   useEffect(() => {
@@ -93,6 +164,28 @@ export default function HomeScreen({ navigation }) {
       subscription?.remove();
     };
   }, []);
+
+  // Fetch route when mode or preference changes
+  useEffect(() => {
+    if (startCoords && endCoords) {
+      fetchRoute();
+    }
+  }, [mode, routePreference]);
+
+  // Initialize realtime data
+  useEffect(() => {
+    fetchRealtimeData();
+    const interval = setInterval(fetchRealtimeData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Toggle layer visibility
+  const toggleLayer = (layerName) => {
+    setLayersVisibility((prevState) => ({
+      ...prevState,
+      [layerName]: !prevState[layerName],
+    }));
+  };
 
   // Handle address autocomplete
   const handleAutocomplete = async (text, inputType) => {
@@ -129,10 +222,7 @@ export default function HomeScreen({ navigation }) {
         setActiveInput(inputType);
         setError("");
       } catch (e) {
-        console.error(
-          "Lỗi Autocomplete Mapbox:",
-          e.response ? e.response.data : e.message
-        );
+        console.error("Autocomplete error:", e);
         setSuggestions([]);
         setError("Không thể lấy gợi ý địa điểm. Vui lòng thử lại.");
       } finally {
@@ -147,9 +237,15 @@ export default function HomeScreen({ navigation }) {
     if (activeInput === "start") {
       setStart(place.name);
       setStartCoords(place.coords);
+      if (endCoords) {
+        fetchRoute();
+      }
     } else {
       setEnd(place.name);
       setEndCoords(place.coords);
+      if (startCoords) {
+        fetchRoute();
+      }
     }
     setSuggestions([]);
     setActiveInput(null);
@@ -163,16 +259,44 @@ export default function HomeScreen({ navigation }) {
       walking: 0,
       cycling: 0,
       "driving-traffic": 200,
+      transit: 90,
     };
     return (distanceKm * (emissionFactors[transportMode] || 150)).toFixed(0);
   };
 
+  // Sort routes by preference
+  const sortRoutesByPreference = (routes, preference) => {
+    if (!routes || routes.length === 0) return routes;
+
+    const sortedRoutes = [...routes];
+
+    switch (preference) {
+      case "fastest":
+        sortedRoutes.sort((a, b) => a.duration - b.duration);
+        break;
+      case "shortest":
+        sortedRoutes.sort((a, b) => a.distance - b.distance);
+        break;
+      case "eco":
+        sortedRoutes.sort((a, b) => a.emissions - b.emissions);
+        break;
+      case "less_traffic":
+        sortedRoutes.sort((a, b) => {
+          const trafficFactorA = a.distance / a.duration;
+          const trafficFactorB = b.distance / b.duration;
+          return trafficFactorB - trafficFactorA;
+        });
+        break;
+      default:
+        break;
+    }
+
+    return sortedRoutes;
+  };
+
   // Fetch routes from Mapbox API
   const fetchRoute = async () => {
-    if (!startCoords || !endCoords) {
-      setError("Vui lòng chọn điểm đi và điểm đến.");
-      return;
-    }
+    if (!startCoords || !endCoords) return;
 
     setLoading(true);
     setError("");
@@ -183,38 +307,45 @@ export default function HomeScreen({ navigation }) {
       const startLonLat = `${startCoords[1]},${startCoords[0]}`;
       const endLonLat = `${endCoords[1]},${endCoords[0]}`;
 
+      let additionalParams = {};
+      if (mode === "driving" || mode === "driving-traffic") {
+        additionalParams = {
+          annotations: "congestion",
+          overview: "full",
+        };
+      }
+
       const res = await axios.get(
         `https://api.mapbox.com/directions/v5/mapbox/${mode}/${startLonLat};${endLonLat}`,
         {
           params: {
             access_token: MAPBOX_PUBLIC_ACCESS_TOKEN,
             geometries: "geojson",
-            overview: "full",
             steps: false,
             alternatives: true,
+            language: "vi",
+            ...additionalParams,
           },
         }
       );
 
       if (res.data.routes && res.data.routes.length > 0) {
-        const routesData = res.data.routes.map((route, index) => ({
+        let routesData = res.data.routes.map((route, index) => ({
           geometry: route.geometry,
           distance: route.distance,
           duration: route.duration / 60,
           emissions: calculateEmissions(route.distance, mode),
+          congestion: route.congestion,
         }));
+
+        routesData = sortRoutesByPreference(routesData, routePreference);
         setRoutes(routesData);
       } else {
         setError("Không tìm thấy tuyến đường cho các điểm đã chọn.");
       }
     } catch (error) {
-      console.error(
-        "Lỗi Mapbox Directions API:",
-        error.response ? error.response.data : error.message
-      );
-      setError(
-        "Không thể lấy dữ liệu tuyến đường. Vui lòng kiểm tra kết nối hoặc thử lại."
-      );
+      console.error("Directions API error:", error);
+      setError("Không thể lấy dữ liệu tuyến đường. Vui lòng thử lại.");
     } finally {
       setLoading(false);
     }
@@ -239,21 +370,31 @@ export default function HomeScreen({ navigation }) {
     setSidebarOpen(!sidebarOpen);
   };
 
-  // Get dynamic form container style based on screen width
+  // Change transport mode
+  const handleModeChange = (newMode) => {
+    setMode(newMode);
+  };
+
+  // Change route preference
+  const handlePreferenceChange = (newPreference) => {
+    setRoutePreference(newPreference);
+  };
+
+  // Get dynamic form container style
   const getFormContainerStyle = () => {
     if (screenWidth <= 768) {
       return {
-        width: sidebarOpen ? "80%" : 0,
+        width: sidebarOpen ? "85%" : 0,
         opacity: sidebarOpen ? 1 : 0,
       };
     }
     return {
-      width: sidebarOpen ? 400 : 0,
+      width: sidebarOpen ? 450 : 0,
     };
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.mapContainer}>
         <MapWrapper
           startCoords={startCoords}
@@ -261,7 +402,40 @@ export default function HomeScreen({ navigation }) {
           routes={routes}
           mapboxAccessToken={MAPBOX_PUBLIC_ACCESS_TOKEN}
           selectedRouteIndex={selectedRouteIndex}
+          initialCenter={[105.8342, 21.0278]} // Hà Nội
+          initialZoom={12}
+          layersVisibility={layersVisibility}
+          trafficData={trafficData}
+          airQualityData={airQualityData}
+          incidentData={incidentData}
         />
+      </View>
+
+      {/* Layer controls */}
+      <View style={styles.floatingLayerControls}>
+        <Text style={styles.controlPanelTitle}>Lớp dữ liệu:</Text>
+        <View style={styles.layerButtonsContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {Object.keys(layersVisibility).map((key) => (
+              <TouchableOpacity
+                key={key}
+                style={[
+                  styles.layerButton,
+                  layersVisibility[key] ? styles.layerButtonActive : {},
+                ]}
+                onPress={() => toggleLayer(key)}
+              >
+                <Text style={styles.layerButtonText}>
+                  {key === "traffic"
+                    ? "Giao thông"
+                    : key === "airQuality"
+                    ? "Không khí"
+                    : "Sự cố"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       </View>
 
       {sidebarOpen && (
@@ -356,7 +530,7 @@ export default function HomeScreen({ navigation }) {
                     styles.modeButton,
                     mode === item.mapboxProfile && styles.modeButtonSelected,
                   ]}
-                  onPress={() => setMode(item.mapboxProfile)}
+                  onPress={() => handleModeChange(item.mapboxProfile)}
                 >
                   <Text
                     style={[
@@ -365,6 +539,36 @@ export default function HomeScreen({ navigation }) {
                     ]}
                   >
                     {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.preferenceTitle}>Ưu tiên tuyến đường:</Text>
+            <View style={styles.preferenceContainer}>
+              {routePreferences.map((pref) => (
+                <TouchableOpacity
+                  key={pref.id}
+                  style={[
+                    styles.preferenceButton,
+                    routePreference === pref.id &&
+                      styles.preferenceButtonSelected,
+                  ]}
+                  onPress={() => handlePreferenceChange(pref.id)}
+                >
+                  <Ionicons
+                    name={pref.icon}
+                    size={20}
+                    color={routePreference === pref.id ? "#fff" : "#007BFF"}
+                  />
+                  <Text
+                    style={[
+                      styles.preferenceText,
+                      routePreference === pref.id &&
+                        styles.preferenceTextSelected,
+                    ]}
+                  >
+                    {pref.label}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -436,6 +640,15 @@ export default function HomeScreen({ navigation }) {
                       {Math.floor(routes[selectedRouteIndex].duration)} phút
                     </Text>
                   </View>
+                  <View style={styles.routeInfoItem}>
+                    <Text style={styles.routeInfoLabel}>Ưu tiên:</Text>
+                    <Text style={styles.routeInfoValue}>
+                      {
+                        routePreferences.find((p) => p.id === routePreference)
+                          ?.label
+                      }
+                    </Text>
+                  </View>
                 </View>
               </>
             )}
@@ -444,7 +657,7 @@ export default function HomeScreen({ navigation }) {
           </ScrollView>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -572,6 +785,43 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold",
   },
+  preferenceTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginTop: 10,
+    marginBottom: 10,
+    color: "#333",
+  },
+  preferenceContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginBottom: 15,
+  },
+  preferenceButton: {
+    width: "48%",
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: "#f0f0f0",
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  preferenceButtonSelected: {
+    backgroundColor: "#007BFF",
+    borderColor: "#007BFF",
+  },
+  preferenceText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: "#555",
+  },
+  preferenceTextSelected: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
   findButton: {
     backgroundColor: "#007BFF",
     padding: 15,
@@ -647,5 +897,58 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#333",
+  },
+  floatingLayerControls: {
+    position: "absolute",
+    bottom: Platform.OS === "ios" ? 30 : 20,
+    right: 15,
+    backgroundColor: "rgba(255, 255, 255, 0.98)",
+    borderRadius: 20,
+    padding: 10,
+    flexDirection: "column",
+    alignItems: "flex-end",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 5,
+  },
+  controlPanelTitle: {
+    fontSize: 15,
+    fontWeight: "bold",
+    marginBottom: 5,
+    color: "#2c3e50",
+    textAlign: "right",
+  },
+  layerButtonsContainer: {
+    flexDirection: "row",
+    marginBottom: 5,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  layerButton: {
+    backgroundColor: "#e0e0e0",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    marginTop: 5,
+    marginLeft: 8,
+    borderWidth: 0,
+    alignSelf: "flex-end",
+  },
+  layerButtonActive: {
+    backgroundColor: "#3498db",
+    borderColor: "#3498db",
+    shadowColor: "#3498db",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  layerButtonText: {
+    color: "black",
+    fontWeight: "600",
+    fontSize: 13,
   },
 });
