@@ -1,4 +1,3 @@
-// models/Coordinate.js
 const mongoose = require("mongoose");
 
 const coordinateSchema = new mongoose.Schema(
@@ -10,12 +9,12 @@ const coordinateSchema = new mongoose.Schema(
       unique: true,
     },
     XCOORD: {
-      // Kinh độ
+      // Kinh độ (Longitude)
       type: Number,
       required: true,
     },
     YCOORD: {
-      // Vĩ độ
+      // Vĩ độ (Latitude)
       type: Number,
       required: true,
     },
@@ -42,13 +41,13 @@ const coordinateSchema = new mongoose.Schema(
         default: "Point",
       },
       coordinates: {
-        // [longitude, latitude]
+        // Cập nhật để phản ánh rõ ràng [longitude, latitude]
         type: [Number],
         required: true,
       },
     },
   },
-  { collection: "COORDINATES" }
+  { collection: "NODES" }
 ); // Chỉ định tên collection trong MongoDB
 
 // Tạo chỉ mục không gian cho trường 'location'
@@ -59,7 +58,9 @@ coordinateSchema.pre("save", function (next) {
   if (this.XCOORD != null && this.YCOORD != null) {
     this.location = {
       type: "Point",
-      coordinates: [this.XCOORD, this.YCOORD], // Lưu ý: [longitude, latitude]
+      // ĐẢM BẢO: coordinates phải theo định dạng [longitude, latitude]
+      // Nếu XCOORD là kinh độ và YCOORD là vĩ độ, thì thứ tự này là đúng.
+      coordinates: [this.XCOORD, this.YCOORD],
     };
   }
   next();

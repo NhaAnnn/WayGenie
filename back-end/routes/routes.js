@@ -1,11 +1,10 @@
-// routes/routes.js
 const express = require("express");
 const router = express.Router();
 const Route = require("../models/routes");
-const Coordinate = require("../models/coordinates"); // Import Coordinate model
+const Coordinate = require("../models/coordinates"); // Ensure this model exists and has a 'location' field with a 2dsphere index
 const GraphService = require("../utils/GraphService"); // Import GraphService
 
-// Middleware đơn giản để log thời gian truy cập API (tùy chọn)
+// Simple middleware to log API access times
 router.use((req, res, next) => {
   console.log(
     `[Routes API] ${req.method} ${
@@ -16,20 +15,20 @@ router.use((req, res, next) => {
 });
 
 // --- GET All Routes ---
-// Có thể thêm bộ lọc và phân trang (ví dụ: theo TSYSSET)
+// Supports optional filtering by TSYSSET (e.g., 'CAR' in "B2,BIKE,CAR,Co")
 router.get("/", async (req, res) => {
   try {
     const query = {};
     if (req.query.tsysset) {
-      // Tìm kiếm các route chứa một TSYSSET cụ thể (ví dụ: 'CAR' trong "B2,BIKE,CAR,Co")
+      // Case-insensitive regex search for TSYSSET
       query.TSYSSET = { $regex: new RegExp(req.query.tsysset, "i") };
     }
     const routes = await Route.find(query);
     res.status(200).json(routes);
   } catch (error) {
-    console.error("Lỗi khi lấy tất cả tuyến đường:", error);
+    console.error("Error fetching all routes:", error);
     res.status(500).json({
-      message: "Lỗi máy chủ khi lấy tuyến đường",
+      message: "Server error while fetching routes",
       error: error.message,
     });
   }
@@ -40,13 +39,13 @@ router.get("/:id", async (req, res) => {
   try {
     const route = await Route.findById(req.params.id);
     if (!route) {
-      return res.status(404).json({ message: "Không tìm thấy tuyến đường" });
+      return res.status(404).json({ message: "Route not found" });
     }
     res.status(200).json(route);
   } catch (error) {
-    console.error("Lỗi khi lấy tuyến đường theo ID:", error);
+    console.error(`Error fetching route by ID (${req.params.id}):`, error);
     res.status(500).json({
-      message: "Lỗi máy chủ khi lấy tuyến đường",
+      message: "Server error while fetching route by ID",
       error: error.message,
     });
   }
@@ -55,19 +54,23 @@ router.get("/:id", async (req, res) => {
 // --- GET Route by LINK-NO (alias linkNo) ---
 router.get("/by-linkno/:linkNo", async (req, res) => {
   try {
+    // Use the actual MongoDB field name for querying with alias
     const route = await Route.findOne({
       "LINK:NO": parseInt(req.params.linkNo),
-    }); // Sử dụng tên trường gốc của MongoDB
+    });
     if (!route) {
       return res
         .status(404)
-        .json({ message: "Không tìm thấy tuyến đường với LINK-NO này" });
+        .json({ message: "No route found with this LINK-NO" });
     }
     res.status(200).json(route);
   } catch (error) {
-    console.error("Lỗi khi lấy tuyến đường theo LINK-NO:", error);
+    console.error(
+      `Error fetching route by LINK-NO (${req.params.linkNo}):`,
+      error
+    );
     res.status(500).json({
-      message: "Lỗi máy chủ khi lấy tuyến đường",
+      message: "Server error while fetching route by LINK-NO",
       error: error.message,
     });
   }
@@ -83,32 +86,25 @@ router.get("/by-nodes/:fromNode/:toNode", async (req, res) => {
     if (routes.length === 0) {
       return res
         .status(404)
-        .json({ message: "Không tìm thấy tuyến đường nào giữa các nút này" });
+        .json({ message: "No routes found between these nodes" });
     }
     res.status(200).json(routes);
   } catch (error) {
-    console.error("Lỗi khi lấy tuyến đường theo nút:", error);
+    console.error(
+      `Error fetching routes by nodes (${fromNode} -> ${toNode}):`,
+      error
+    );
     res.status(500).json({
-      message: "Lỗi máy chủ khi lấy tuyến đường",
+      message: "Server error while fetching routes by nodes",
       error: error.message,
     });
   }
 });
 
-// --- POST Create New Route (Nếu bạn cần, ví dụ: Admin nhập thủ công) ---
+// --- POST Create New Route ---
+// Assumes incoming data directly matches the schema's field types (e.g., numbers for length, V0PRT)
 router.post("/", async (req, res) => {
-  const newRouteData = req.body; // Dữ liệu sẽ cần khớp với schema
-
-  // Xử lý các trường có setter (như lengthKm, v0PrtKmH)
-  if (newRouteData.LENGTH) {
-    newRouteData.lengthKm = parseFloat(newRouteData.LENGTH.replace("km", ""));
-    delete newRouteData.LENGTH; // Xóa trường gốc để tránh trùng lặp
-  }
-  if (newRouteData.V0PRT) {
-    newRouteData.v0PrtKmH = parseFloat(newRouteData.V0PRT.replace("km/h", ""));
-    delete newRouteData.V0PRT;
-  }
-  // Tương tự cho các trường VCUR_PRTSYS và IMP_PRTSYS nếu bạn gửi chúng dưới dạng string có đơn vị từ frontend
+  const newRouteData = req.body;
 
   const newRoute = new Route(newRouteData);
 
@@ -116,14 +112,14 @@ router.post("/", async (req, res) => {
     const savedRoute = await newRoute.save();
     res.status(201).json(savedRoute);
   } catch (error) {
-    console.error("Lỗi khi tạo tuyến đường mới:", error);
-    res
-      .status(400)
-      .json({ message: "Không thể tạo tuyến đường mới", error: error.message });
+    console.error("Error creating new route:", error);
+    res.status(400).json({
+      message: "Could not create new route",
+      error: error.message,
+    });
   }
 });
 
-// --- NEW: Multi-Criteria Route Finding API ---
 router.post("/find-multi-criteria", async (req, res) => {
   const { startLon, startLat, endLon, endLat, criteriaWeights, mode } =
     req.body;
@@ -137,26 +133,26 @@ router.post("/find-multi-criteria", async (req, res) => {
     !mode
   ) {
     return res.status(400).json({
-      message: "Thiếu thông tin bắt buộc để tìm tuyến đường đa tiêu chí.",
+      message:
+        "Missing required information to find a multi-criteria route. Please provide startLon, startLat, endLon, endLat, criteriaWeights, and mode.",
     });
   }
 
   try {
-    // 1. Tìm Node gần nhất với tọa độ Start/End
-    // Đối với ứng dụng thực tế, bạn sẽ cần một chỉ mục không gian (2dsphere) trên collection COORDINATES
-    // và sử dụng truy vấn địa lý như $near hoặc $geoWithin.
-    // Giả định bạn có cách để tìm NODE-NO từ lon/lat
+    // 1. Find the nearest nodes to the Start/End coordinates using geospatial indexing
+    // IMPORTANT: The 'Coordinate' model MUST have a 'location' field defined as GeoJSON Point
+    // and a 2dsphere index on it for $nearSphere to work efficiently.
     const startCoordDoc = await Coordinate.findOne({
       location: {
         $nearSphere: {
           $geometry: {
             type: "Point",
-            coordinates: [startLon, startLat],
+            coordinates: [startLon, startLat], // [longitude, latitude]
           },
-          $maxDistance: 1000, // Tìm trong bán kính 1km
+          $maxDistance: 1000, // Search within a 1km radius
         },
       },
-    }).lean(); // Sử dụng .lean() để lấy POJO (Plain Old JavaScript Object) thay vì Mongoose document
+    }).lean(); // .lean() returns a plain JavaScript object, faster for read-only operations
 
     const endCoordDoc = await Coordinate.findOne({
       location: {
@@ -165,14 +161,15 @@ router.post("/find-multi-criteria", async (req, res) => {
             type: "Point",
             coordinates: [endLon, endLat],
           },
-          $maxDistance: 1000, // Tìm trong bán kính 1km
+          $maxDistance: 1000, // Search within a 1km radius
         },
       },
     }).lean();
 
     if (!startCoordDoc || !endCoordDoc) {
       return res.status(404).json({
-        message: "Không tìm thấy nút gần điểm bắt đầu hoặc điểm kết thúc.",
+        message:
+          "Could not find a nearby node for the start or end point. Try increasing maxDistance or checking coordinates.",
       });
     }
 
@@ -180,39 +177,40 @@ router.post("/find-multi-criteria", async (req, res) => {
     const endNodeNo = endCoordDoc["NODE-NO"];
 
     console.log(
-      `Tìm đường từ NODE-NO ${startNodeNo} đến NODE-NO ${endNodeNo} với tiêu chí:`,
+      `Finding route from NODE-NO ${startNodeNo} to NODE-NO ${endNodeNo} with criteria:`,
       criteriaWeights
     );
 
-    // 2. Lấy tất cả Nodes và Routes để xây dựng đồ thị
+    // 2. Fetch all nodes and routes to build the graph
+    // For very large datasets, consider optimizing this (e.g., fetching only relevant nearby data)
     const allCoordinates = await Coordinate.find({}).lean();
     const allRoutes = await Route.find({}).lean();
 
-    // 3. Sử dụng GraphService để tìm đường
+    // 3. Use GraphService to find the multi-criteria path
     const result = GraphService.findMultiCriteriaRoute(
       startNodeNo,
       endNodeNo,
       allCoordinates,
       allRoutes,
       criteriaWeights,
-      mode // Chế độ di chuyển (ví dụ: 'driving', 'cycling')
+      mode // Travel mode (e.g., 'driving', 'cycling')
     );
 
     if (result && result.path.length > 0) {
-      // Chuyển đổi đường dẫn thành GeoJSON LineString
+      // Convert the path (array of node IDs) into GeoJSON LineString coordinates
       const routeCoordinates = result.path.map((nodeId) => {
         const coord = allCoordinates.find((c) => c["NODE-NO"] === nodeId);
-        return [coord.XCOORD, coord.YCOORD]; // [longitude, latitude]
+        // Ensure XCOORD is longitude and YCOORD is latitude for GeoJSON
+        return [coord.XCOORD, coord.YCOORD];
       });
 
       const geoJsonRoute = {
         type: "Feature",
         properties: {
-          duration: result.totalDuration, // Tổng thời gian
-          distance: result.totalDistance * 1000, // Tổng khoảng cách (km -> m)
-          cost: result.totalCost, // Tổng chi phí đa tiêu chí
-          // Có thể thêm các thuộc tính khác như các đoạn đường (legs, steps)
-          // nếu bạn muốn frontend hiển thị chi tiết hơn
+          duration: result.totalDuration, // Total duration calculated by GraphService
+          distance: result.totalDistance * 1000, // Total distance (km -> meters)
+          cost: result.totalCost, // Total multi-criteria cost
+          // Additional properties can be added here if needed for frontend display
         },
         geometry: {
           type: "LineString",
@@ -220,17 +218,18 @@ router.post("/find-multi-criteria", async (req, res) => {
         },
       };
 
-      // Trả về một mảng GeoJSONs, dù chỉ có một tuyến đường cho multi-criteria
+      // Return an array of GeoJSON features (even if it's just one route)
       res.status(200).json([geoJsonRoute]);
     } else {
       res.status(404).json({
-        message: "Không tìm thấy tuyến đường với các tiêu chí đã chọn.",
+        message:
+          "No route found with the selected criteria. It might be unreachable or the criteria are too restrictive.",
       });
     }
   } catch (error) {
-    console.error("Lỗi khi tìm tuyến đường đa tiêu chí:", error);
+    console.error("Error finding multi-criteria route:", error);
     res.status(500).json({
-      message: "Lỗi máy chủ khi tìm tuyến đường đa tiêu chí.",
+      message: "Server error while finding multi-criteria route.",
       error: error.message,
     });
   }

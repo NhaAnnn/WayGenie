@@ -56,7 +56,7 @@ export default function HomeScreen() {
           <Text style={styles.welcomeText}>Chào mừng bạn 👋</Text>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={20} color="#fff" />
-            <Text style={styles.logoutButtonText}>Đăng xuất</Text>
+            {/* <Text style={styles.logoutButtonText}>Đăng xuất</Text> */}
           </TouchableOpacity>
         </View>
 
@@ -71,7 +71,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             // Áp dụng style 'card' và thêm style cho width dựa trên isLargeScreen
             style={[styles.card, { width: isLargeScreen ? "48%" : "100%" }]}
-            onPress={() => navigateToScreen("Hiện Trạng")}
+            onPress={() => navigateToScreen("CurrentStatusMap")}
           >
             <View style={styles.iconCircle}>
               <Ionicons name="map-outline" size={40} color="#007BFF" />
@@ -85,7 +85,7 @@ export default function HomeScreen() {
           {/* Card: Bản đồ Mô phỏng */}
           <TouchableOpacity
             style={[styles.card, { width: isLargeScreen ? "48%" : "100%" }]}
-            onPress={() => navigateToScreen("Mô Phỏng")}
+            onPress={() => navigateToScreen("SimulationMap")}
           >
             <View style={styles.iconCircle}>
               <Ionicons name="analytics-outline" size={40} color="#007BFF" />
@@ -122,12 +122,7 @@ export default function HomeScreen() {
           {/* Card: Cài đặt Cá nhân */}
           <TouchableOpacity
             style={[styles.card, { width: isLargeScreen ? "48%" : "100%" }]}
-            onPress={() =>
-              Alert.alert(
-                "Cài đặt Cá nhân",
-                "Tính năng quản lý hồ sơ và các tùy chọn cá nhân đang được phát triển."
-              )
-            }
+            onPress={() => navigateToScreen("PersonalInfo")}
           >
             <View style={styles.iconCircle}>
               <Ionicons

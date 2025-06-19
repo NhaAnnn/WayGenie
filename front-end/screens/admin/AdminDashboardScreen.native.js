@@ -49,7 +49,7 @@ const AdminDashboardScreen = () => {
         <Text style={styles.headerTitle}>Bảng điều khiển Admin</Text>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={22} color="#fff" />
-          <Text style={styles.logoutButtonText}>Đăng xuất</Text>
+          {/* <Text style={styles.logoutButtonText}>Đăng xuất</Text> */}
         </TouchableOpacity>
       </View>
 
