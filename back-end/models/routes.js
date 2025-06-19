@@ -1,13 +1,13 @@
-// models/Route.js
 const mongoose = require("mongoose");
 
 const routeSchema = new mongoose.Schema(
   {
+    // linkNo is the internal Mongoose field name, "LINK:NO" is the actual field name in MongoDB/CSV
     linkNo: {
       type: Number,
       required: true,
       unique: true,
-      alias: "LINK:NO",
+      alias: "LINK:NO", // Alias for consistent access, matches source data
     },
     FROMNODENO: {
       type: Number,
@@ -25,10 +25,10 @@ const routeSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    lengthKm: {
+    // length is the internal Mongoose field, "LENGTH" is the actual field name
+    length: {
       type: Number,
       alias: "LENGTH",
-      set: (v) => parseFloat(v.replace("km", "")),
     },
     NUMLANES: {
       type: Number,
@@ -36,17 +36,20 @@ const routeSchema = new mongoose.Schema(
     CAPPRT: {
       type: Number,
     },
+    // volVehPrtAP maps to "VOLVEHPRT"
     volVehPrtAP: {
       type: Number,
-      alias: "VOLVEHPRT(AP)",
+      alias: "VOLVEHPRT",
     },
+    // volPcuPrtAP maps to "VOLPCUPRT"
     volPcuPrtAP: {
       type: Number,
-      alias: "VOLPCUPRT(AP)",
+      alias: "VOLPCUPRT",
     },
+    // volVehTsysMcAP maps to "VOLVEH_TSYS"
     volVehTsysMcAP: {
       type: Number,
-      alias: "VOLVEH_TSYS(MC,AP)",
+      alias: "VOLVEH_TSYS",
     },
     LENGTHDIR: {
       type: String,
@@ -56,36 +59,33 @@ const routeSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    v0PrtKmH: {
+    // v0Prt maps to "V0PRT"
+    v0Prt: {
       type: Number,
       alias: "V0PRT",
-      set: (v) => parseFloat(v.replace("km/h", "")),
     },
+    // These VCUR_PRTSYS fields map directly to their aliased names
     vCurPrtSysBike: {
       type: Number,
-      alias: "VCUR_PRTSYS(BIKE)",
-      set: (v) => parseFloat(v.replace("km/h", "")),
+      alias: "VCUR_PRTSYS_BIKE",
     },
     vCurPrtSysCar: {
       type: Number,
-      alias: "VCUR_PRTSYS(CAR)",
-      set: (v) => parseFloat(v.replace("km/h", "")),
+      alias: "VCUR_PRTSYS_CAR",
     },
     vCurPrtSysCo: {
       type: Number,
-      alias: "VCUR_PRTSYS(CO)",
-      set: (v) => parseFloat(v.replace("km/h", "")),
+      alias: "VCUR_PRTSYS_CO",
     },
     vCurPrtSysHgv: {
       type: Number,
-      alias: "VCUR_PRTSYS(HGV)",
-      set: (v) => parseFloat(v.replace("km/h", "")),
+      alias: "VCUR_PRTSYS_HGV",
     },
     vCurPrtSysMc: {
       type: Number,
-      alias: "VCUR_PRTSYS(MC)",
-      set: (v) => parseFloat(v.replace("km/h", "")),
+      alias: "VCUR_PRTSYS_MC",
     },
+    // These IMP_PRTSYS fields retain their exact (special character) aliases
     impPrtSysBikeAH: { type: Number, alias: "IMP_PRTSYS(BIKE,AH)" },
     impPrtSysBikeAP: { type: Number, alias: "IMP_PRTSYS(BIKE,AP)" },
     impPrtSysCarAH: { type: Number, alias: "IMP_PRTSYS(CAR,AH)" },
@@ -99,24 +99,34 @@ const routeSchema = new mongoose.Schema(
     VC: {
       type: Number,
     },
+    // volCapRatioPrtAP maps to "VOLCAPRATIOPRT"
     volCapRatioPrtAP: {
       type: Number,
-      alias: "VOLCAPRATIOPRT(AP)",
+      alias: "VOLCAPRATIOPRT",
     },
-    // --- THÊM CÁC TRƯỜNG MỚI CHO TIÊU CHÍ ĐA ĐIỂM ---
-    trafficImpactFactor: {
-      // Yếu tố tác động giao thông (ví dụ: dựa trên VC hoặc VOLVEHPRT/CAPPRT)
-      type: Number,
-      default: 0.1, // Giá trị mặc định, có thể được tính toán hoặc cập nhật sau
+    // GeoJSON 'geometry' field for storing LineString data
+    geometry: {
+      type: {
+        type: String,
+        enum: ["LineString"], // Assuming only LineString for routes
+        required: true,
+      },
+      coordinates: {
+        type: [[Number]], // Array of [longitude, latitude] pairs
+        required: true,
+      },
     },
+
     pollutionFactor: {
-      // Yếu tố tác động ô nhiễm (giả định)
       type: Number,
-      default: 0.1, // Giá trị mặc định, cần dữ liệu thực tế
+      default: 0.1, // Default value, can be overridden or calculated
     },
   },
-  { collection: "ROUTE" }
+  { collection: "LINKS" } // Ensure the collection name is correct
 );
+
+// Create a 2dsphere index on the 'geometry' field for geospatial queries
+routeSchema.index({ geometry: "2dsphere" });
 
 const Route = mongoose.model("Route", routeSchema);
 

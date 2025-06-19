@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react"; // Import useRef
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -9,13 +9,25 @@ import {
   Keyboard,
   Alert,
   ScrollView,
-  TouchableWithoutFeedback, // Import TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  LayoutAnimation, // Import LayoutAnimation for smooth transitions
+  Platform,
+  UIManager,
 } from "react-native";
 import axios from "axios";
 
-import { transportModes } from "../data/transportModes"; // Đảm bảo đường dẫn đúng
-import { MAPBOX_PUBLIC_ACCESS_TOKEN } from "../secrets"; // Đảm bảo đường dẫn đúng
-import RouteDetailsModal from "./RouteDetailsModal"; // Đảm bảo đường dẫn đúng
+// Assume these are correctly imported from your project
+import { transportModes } from "../data/transportModes";
+import { MAPBOX_PUBLIC_ACCESS_TOKEN } from "../secrets";
+import RouteDetailsModal from "./RouteDetailsModal";
+import { Ionicons } from "@expo/vector-icons";
+
+// Enable LayoutAnimation for Android
+if (Platform.OS === "android") {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
 
 const useDebounce = (value, delay) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -30,35 +42,35 @@ const useDebounce = (value, delay) => {
   return debouncedValue;
 };
 
-// Tọa độ mặc định cho Hà Nội (ví dụ)
-const DEFAULT_HANOI_COORDS = [21.0278, 105.8342]; // Vĩ độ, Kinh độ (Latitude, Longitude)
+// Default coordinates for Hanoi (example)
+const DEFAULT_HANOI_COORDS = [21.0278, 105.8342]; // Latitude, Longitude
 
 const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
-  const [mode, setMode] = useState("driving"); // Khởi tạo với giá trị mặc định
+  const [mode, setMode] = useState("driving"); // Initialize with default value
 
   const [startCoords, setStartCoords] = useState(null); // [lon, lat]
   const [endCoords, setEndCoords] = useState(null); // [lon, lat]
 
   const [suggestions, setSuggestions] = useState([]);
-  const [activeInput, setActiveInput] = useState(null); // 'start' hoặc 'end'
+  const [activeInput, setActiveInput] = useState(null); // 'start' or 'end'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const debouncedStartText = useDebounce(start, 300);
   const debouncedEndText = useDebounce(end, 300);
 
-  const [suggestedRoutes, setSuggestedRoutes] = useState([]); // Chứa tất cả các tuyến đường gợi ý từ Mapbox
+  const [suggestedRoutes, setSuggestedRoutes] = useState([]); // Contains all suggested routes from Mapbox
   const [isRouteDetailsModalVisible, setIsRouteDetailsModalVisible] =
     useState(false);
-  const [selectedRouteDetails, setSelectedRouteDetails] = useState(null); // Tuyến đường chi tiết được chọn để hiển thị modal
+  const [selectedRouteDetails, setSelectedRouteDetails] = useState(null); // Selected route details to show in modal
 
-  // State mới để kiểm soát việc hiển thị các lựa chọn phương tiện và tiêu chí
+  // New state to control visibility of transport modes and criteria options
   const [hasPerformedInitialSearch, setHasPerformedInitialSearch] =
     useState(false);
 
-  // State cho các tiêu chí định tuyến
+  // State for routing criteria
   const [routingCriteria] = useState([
     { id: "fastest", name: "Nhanh nhất" },
     { id: "shortest", name: "Ngắn nhất" },
@@ -68,13 +80,17 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
   const [selectedRoutingCriterionId, setSelectedRoutingCriterionId] =
     useState("fastest");
 
-  // Refs và state cho vị trí của TextInput để định vị danh sách gợi ý
+  // State to control panel expansion/collapse
+  const [isPanelExpanded, setIsPanelExpanded] = useState(true); // Start expanded
+
+  // Refs and state for TextInput positions to correctly place suggestion lists
   const startInputRef = useRef(null);
   const endInputRef = useRef(null);
   const [startInputLayout, setStartInputLayout] = useState(null);
   const [endInputLayout, setEndInputLayout] = useState(null);
-  const [panelLayout, setPanelLayout] = useState(null); // Layout của toàn bộ panel
+  const [panelLayout, setPanelLayout] = useState(null); // Layout of the entire panel
 
+  // Set default Hanoi coordinates on initial load if start is empty
   useEffect(() => {
     if (!startCoords && start === "") {
       setStartCoords([DEFAULT_HANOI_COORDS[1], DEFAULT_HANOI_COORDS[0]]);
@@ -82,26 +98,44 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
     }
   }, []);
 
+  // Effect for debounced start text autocomplete
   useEffect(() => {
     if (activeInput === "start") {
       handleAutocomplete(debouncedStartText, "start");
     }
   }, [debouncedStartText, activeInput]);
 
+  // Effect for debounced end text autocomplete
   useEffect(() => {
     if (activeInput === "end") {
       handleAutocomplete(debouncedEndText, "end");
     }
   }, [debouncedEndText, activeInput]);
 
-  // Effect để tự động tìm lại tuyến đường khi mode hoặc tiêu chí thay đổi
+  // Effect to re-fetch route when mode or criterion changes (only if an initial search was performed)
   useEffect(() => {
-    // Chỉ tìm lại nếu đã có ít nhất một lần tìm kiếm thành công và có điểm đi/điểm đến
     if (hasPerformedInitialSearch && startCoords && endCoords) {
       fetchRoute();
     }
   }, [mode, selectedRoutingCriterionId, hasPerformedInitialSearch]);
 
+  /**
+   * Toggles the expansion state of the panel.
+   * Also dismisses the keyboard and clears suggestions.
+   */
+  const togglePanelExpanded = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); // Smooth transition
+    setIsPanelExpanded((prev) => !prev);
+    Keyboard.dismiss(); // Dismiss keyboard when toggling
+    setSuggestions([]); // Clear suggestions when toggling
+    setActiveInput(null); // Clear active input
+  };
+
+  /**
+   * Handles autocomplete suggestions from Mapbox Geocoding API.
+   * @param {string} text - The input text for which to get suggestions.
+   * @param {'start' | 'end'} inputType - Indicates which input field is active.
+   */
   const handleAutocomplete = async (text, inputType) => {
     if (!text) {
       setSuggestions([]);
@@ -126,14 +160,14 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
       );
       const hits = res.data.features.map((feature) => ({
         name: feature.place_name,
-        coords: [feature.center[0], feature.center[1]], // Lưu dưới dạng [lon, lat]
+        coords: [feature.center[0], feature.center[1]], // Store as [lon, lat]
       }));
 
       setSuggestions(hits);
       setError("");
     } catch (e) {
       console.error(
-        "Lỗi Autocomplete Mapbox:",
+        "Mapbox Autocomplete Error:",
         e.response ? e.response.data : e.message
       );
       setSuggestions([]);
@@ -143,6 +177,10 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
     }
   };
 
+  /**
+   * Selects a suggestion from the autocomplete list and updates the corresponding input field.
+   * @param {object} place - The selected place object with name and coordinates.
+   */
   const selectSuggestion = (place) => {
     Keyboard.dismiss();
     if (activeInput === "start") {
@@ -165,7 +203,6 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
     setLoading(true);
     setError("");
     setSuggestedRoutes([]);
-    // onClearRoute(); // Không gọi onClearRoute ở đây để tránh reset map nếu chỉ thay đổi mode/criterion
 
     try {
       const startLonLat = `${startCoords[0]},${startCoords[1]}`;
@@ -173,7 +210,7 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
 
       const currentMode = mode || "driving";
 
-      console.log("Đang tìm đường với:", {
+      console.log("Searching for route with:", {
         startLonLat,
         endLonLat,
         mode: currentMode,
@@ -194,29 +231,31 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
       );
 
       console.log(
-        "Phản hồi từ Mapbox Directions API:",
+        "Response from Mapbox Directions API:",
         JSON.stringify(res.data, null, 2)
       );
 
       if (res.data.routes && res.data.routes.length > 0) {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); // Smooth transition
         setSuggestedRoutes(res.data.routes);
-        setHasPerformedInitialSearch(true); // Đã tìm kiếm thành công, hiển thị các tùy chọn
+        setHasPerformedInitialSearch(true); // Successfully searched, show options
+        // Removed: setIsPanelExpanded(false); // This line is removed to prevent automatic collapse
 
         const allGeoJSONs = res.data.routes.map((route) => route.geometry);
 
         onRouteSelected(
-          startCoords, // Là [lon, lat]
-          endCoords, // Là [lon, lat]
-          allGeoJSONs // TRUYỀN TOÀN BỘ MẢNG CÁC GEOJSONs
+          startCoords, // Is [lon, lat]
+          endCoords, // Is [lon, lat]
+          allGeoJSONs // PASS ALL GEOJSONs ARRAY
         );
-        console.log("Đã tìm thấy lộ trình thành công và cập nhật bản đồ.");
+        console.log("Route found successfully and map updated.");
       } else {
         setError("Không tìm thấy tuyến đường cho các điểm đã chọn.");
-        console.warn("Không tìm thấy tuyến đường từ API.");
+        console.warn("No routes found from API.");
       }
     } catch (error) {
       console.error(
-        "Lỗi Mapbox Directions API:",
+        "Mapbox Directions API Error:",
         error.response ? error.response.data : error.message
       );
       if (error.response && error.response.status === 401) {
@@ -237,35 +276,45 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
     }
   };
 
+  /**
+   * Handles the 'Find Route' button press.
+   * Displays an alert if start/end points are not selected from suggestions.
+   */
   const handleFindRoute = () => {
     if (!startCoords || !endCoords) {
       Alert.alert("Thông báo", "Vui lòng chọn điểm đi và điểm đến từ gợi ý.");
       return;
     }
-    // Khi người dùng nhấn nút tìm đường, luôn gọi fetchRoute và đảm bảo hiển thị các tùy chọn
     fetchRoute();
   };
 
+  /**
+   * Shows the detailed information modal for a selected route.
+   * @param {object} route - The route object to display details for.
+   */
   const showRouteDetails = (route) => {
     setSelectedRouteDetails(route);
     setIsRouteDetailsModalVisible(true);
   };
 
+  /**
+   * Closes the route details modal.
+   */
   const closeRouteDetailsModal = () => {
     setIsRouteDetailsModalVisible(false);
     setSelectedRouteDetails(null);
   };
 
-  // Callback để lấy layout của panel chính
+  // Callback to get the layout of the main panel
   const onPanelLayout = (event) => {
     setPanelLayout(event.nativeEvent.layout);
   };
 
-  // Hàm để lấy layout của input field
+  // Function to get absolute layout of an input field
   const getAbsoluteLayout = (ref) => {
     return new Promise((resolve) => {
       if (ref.current) {
-        // Sử dụng measureInWindow để lấy tọa độ tuyệt đối trong cửa sổ
+        // Use measureInWindow to get absolute coordinates within the window
         ref.current.measureInWindow((x, y, width, height) => {
           resolve({ x, y, width, height });
         });
@@ -275,20 +324,26 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
     });
   };
 
-  // Hàm để xử lý khi người dùng chạm vào bất kỳ đâu ngoài input/suggestions
+  // Function to handle touches anywhere outside inputs/suggestions
   const handleScreenPress = () => {
+    // Only dismiss keyboard and suggestions if an input is active
     if (activeInput) {
       Keyboard.dismiss();
       setActiveInput(null);
-      setSuggestions([]); // Xóa gợi ý khi mất focus toàn bộ
+      setSuggestions([]); // Clear suggestions when losing focus
     }
   };
 
   return (
-    <View style={styles.container} onLayout={onPanelLayout}>
+    <View
+      style={[styles.container, !isPanelExpanded && styles.containerCollapsed]}
+      onLayout={onPanelLayout}
+    >
+      {/* TouchableWithoutFeedback covers the entire panel to dismiss keyboard/suggestions */}
       <TouchableWithoutFeedback onPress={handleScreenPress}>
+        {/* ScrollView for the panel content */}
         <ScrollView
-          keyboardShouldPersistTaps="handled" // Quan trọng để các TouchableOpacity trong gợi ý hoạt động
+          keyboardShouldPersistTaps="handled" // Important for TouchableOpacity within suggestions to work
           contentContainerStyle={styles.scrollContent}
         >
           {/* Input Fields for Start and End Points */}
@@ -296,7 +351,7 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
             {/* Start Input Group */}
             <View style={styles.inputGroup}>
               <TextInput
-                ref={startInputRef} // Gán ref
+                ref={startInputRef} // Assign ref
                 style={styles.input}
                 placeholder="📍 Điểm đi"
                 value={start}
@@ -306,9 +361,16 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
                   setSuggestions([]);
                   const layout = await getAbsoluteLayout(startInputRef);
                   setStartInputLayout(layout);
+                  if (!isPanelExpanded) {
+                    // Expand panel if it's collapsed and input gets focus
+                    LayoutAnimation.configureNext(
+                      LayoutAnimation.Presets.easeInEaseOut
+                    );
+                    setIsPanelExpanded(true);
+                  }
                 }}
                 onBlur={() => {
-                  // Giữ trống để TouchableWithoutFeedback xử lý việc đóng gợi ý
+                  // Keep empty for TouchableWithoutFeedback to handle suggestion dismissal
                 }}
                 placeholderTextColor="#888"
               />
@@ -317,7 +379,7 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
             {/* End Input Group */}
             <View style={styles.inputGroup}>
               <TextInput
-                ref={endInputRef} // Gán ref
+                ref={endInputRef} // Assign ref
                 style={styles.input}
                 placeholder="🏁 Điểm đến"
                 value={end}
@@ -327,17 +389,24 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
                   setSuggestions([]);
                   const layout = await getAbsoluteLayout(endInputRef);
                   setEndInputLayout(layout);
+                  if (!isPanelExpanded) {
+                    // Expand panel if it's collapsed and input gets focus
+                    LayoutAnimation.configureNext(
+                      LayoutAnimation.Presets.easeInEaseOut
+                    );
+                    setIsPanelExpanded(true);
+                  }
                 }}
                 onBlur={() => {
-                  // Giữ trống để TouchableWithoutFeedback xử lý việc đóng gợi ý
+                  // Keep empty for TouchableWithoutFeedback to handle suggestion dismissal
                 }}
                 placeholderTextColor="#888"
               />
             </View>
           </View>
 
-          {/* Transport Mode Selection and Routing Criteria - Chỉ hiển thị sau khi tìm kiếm ban đầu */}
-          {hasPerformedInitialSearch && (
+          {/* Transport Mode Selection and Routing Criteria - Only visible after initial search AND when panel is expanded */}
+          {hasPerformedInitialSearch && isPanelExpanded && (
             <View style={styles.modeAndCriteriaContainer}>
               <ScrollView
                 horizontal
@@ -377,7 +446,7 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
                   <TouchableOpacity
                     key={criterion.id}
                     style={[
-                      styles.criteriaButton, // Style riêng cho nút tiêu chí
+                      styles.criteriaButton, // Specific style for criterion button
                       selectedRoutingCriterionId === criterion.id
                         ? styles.criteriaButtonSelected
                         : {},
@@ -386,7 +455,7 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
                   >
                     <Text
                       style={[
-                        styles.criteriaText, // Style riêng cho text tiêu chí
+                        styles.criteriaText, // Specific style for criterion text
                         selectedRoutingCriterionId === criterion.id
                           ? styles.criteriaTextSelected
                           : {},
@@ -400,27 +469,34 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
             </View>
           )}
 
-          {/* Find Route Button */}
-          <TouchableOpacity
-            style={styles.findButton}
-            onPress={handleFindRoute}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.findButtonText}>Tìm đường</Text>
-            )}
-          </TouchableOpacity>
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {/* Find Route Button - Only visible when expanded */}
+          {isPanelExpanded && (
+            <TouchableOpacity
+              style={styles.findButton}
+              onPress={handleFindRoute}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="search" size={16} color="#fff" />
+                  <Text style={styles.findButtonText}>Tìm đường</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+          {isPanelExpanded && error ? (
+            <Text style={styles.errorText}>{error}</Text>
+          ) : null}
 
-          {/* Suggested Routes Display */}
-          {suggestedRoutes.length > 0 && (
+          {/* Suggested Routes Display - Only visible after initial search AND when panel is expanded */}
+          {suggestedRoutes.length > 0 && isPanelExpanded && (
             <View style={styles.suggestedRoutesContainer}>
               <Text style={styles.suggestedRoutesTitle}>
                 Các Lộ trình Gợi ý:
               </Text>
-              {/* ScrollView để cuộn danh sách các tuyến đường nếu nhiều */}
+              {/* ScrollView to scroll the list of routes if many */}
               <ScrollView
                 style={styles.suggestedRoutesList}
                 nestedScrollEnabled
@@ -442,7 +518,7 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
                       </Text>
                       <Text>{`)`}</Text>
                     </Text>
-                    {/* Thêm biểu tượng hoặc chỉ báo cho tuyến đường chính nếu cần */}
+                    {/* Add icon or indicator for the main route if needed */}
                     {index === 0 && (
                       <Text style={styles.mainRouteIndicator}> (Đề xuất)</Text>
                     )}
@@ -454,7 +530,7 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
         </ScrollView>
       </TouchableWithoutFeedback>
 
-      {/* Render Suggestions Overlay outside ScrollView */}
+      {/* Render Suggestions Overlay outside ScrollView, positioned absolutely */}
       {activeInput === "start" &&
         suggestions.length > 0 &&
         startInputLayout &&
@@ -516,6 +592,21 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute }) => {
           </ScrollView>
         )}
 
+      {/* Expand/Collapse Handle at the bottom of the panel */}
+      <TouchableOpacity
+        style={styles.collapseHandle}
+        onPress={togglePanelExpanded}
+      >
+        {/* <Text style={styles.collapseHandleText}>
+          {isPanelExpanded ? "▲" : "▼"}
+        </Text> */}
+        <Ionicons
+          name={isPanelExpanded ? "chevron-up" : "chevron-down"}
+          size={20}
+          color="#1976d2"
+        />
+      </TouchableOpacity>
+
       {/* Route Details Modal */}
       <RouteDetailsModal
         isVisible={isRouteDetailsModalVisible}
@@ -536,7 +627,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 3,
     elevation: 4,
-    position: "relative",
+    position: "absolute", // Position it absolutely within its parent
+    top: 0, // Stick to the top edge
+    left: 0, // Span from the left edge
+    right: 0, // Span to the right edge
+    zIndex: 1000, // Ensure it's above other map elements if used with a map
+    marginHorizontal: 10, // Add some horizontal margin for better appearance
+    marginTop: 40, // Add some top margin to avoid status bar overlap
+    maxHeight: "90%", // Default max height when expanded
+    overflow: "hidden", // Crucial for smooth collapse/expand animations
+  },
+  containerCollapsed: {
+    maxHeight: "5%",
+    maxWidth: "20%", // Adjusted max height for a more compact look
   },
   scrollContent: {
     paddingBottom: 5,
@@ -584,19 +687,19 @@ const styles = StyleSheet.create({
   modeAndCriteriaContainer: {
     flexDirection: "column",
     marginBottom: 10,
-    zIndex: 0,
+    // Keep this low so suggestions overlay it
   },
   modeScroll: {
     flexDirection: "row",
     marginBottom: 5,
     paddingVertical: 5,
-    backgroundColor: "#f0f0f0",
+    backgroundColor: "#e3f2fd", // Changed to light blue
     borderRadius: 10,
   },
   modeScrollContent: {
     flexGrow: 1,
-    justifyContent: "center", // Căn giữa nội dung theo chiều ngang
-    alignItems: "center", // Căn giữa nội dung theo chiều dọc (nếu có)
+    justifyContent: "center",
+    alignItems: "center",
   },
   modeButton: {
     paddingVertical: 5,
@@ -606,8 +709,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 3,
   },
   modeButtonSelected: {
-    backgroundColor: "#007BFF",
-    shadowColor: "#007BFF",
+    backgroundColor: "#1976d2", // Blue
+    shadowColor: "#1976d2",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -615,7 +718,7 @@ const styles = StyleSheet.create({
   },
   modeText: {
     fontSize: 11,
-    color: "#666",
+    color: "#1976d2", // Blue text
     fontWeight: "500",
   },
   modeTextSelected: {
@@ -625,13 +728,13 @@ const styles = StyleSheet.create({
   criteriaScroll: {
     flexDirection: "row",
     paddingVertical: 5,
-    backgroundColor: "#f0f0f0",
+    backgroundColor: "#e3f2fd", // Changed to light blue
     borderRadius: 10,
   },
   criteriaScrollContent: {
     flexGrow: 1,
-    justifyContent: "center", // Căn giữa nội dung theo chiều ngang
-    alignItems: "center", // Căn giữa nội dung theo chiều dọc (nếu có)
+    justifyContent: "center",
+    alignItems: "center",
   },
   criteriaButton: {
     paddingVertical: 5,
@@ -641,8 +744,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 3,
   },
   criteriaButtonSelected: {
-    backgroundColor: "#3498db",
-    shadowColor: "#3498db",
+    backgroundColor: "#1976d2", // Blue
+    shadowColor: "#1976d2",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -650,7 +753,7 @@ const styles = StyleSheet.create({
   },
   criteriaText: {
     fontSize: 11,
-    color: "#666",
+    color: "#1976d2", // Blue text
     fontWeight: "500",
   },
   criteriaTextSelected: {
@@ -658,21 +761,23 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   findButton: {
-    backgroundColor: "#28a745",
+    backgroundColor: "#1976d2", // Blue
     padding: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: "center",
-    marginTop: 8,
-    shadowColor: "#28a745",
+    flexDirection: "row", // For icon + text
+    justifyContent: "center",
+    shadowColor: "#1976d2",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 3,
-    elevation: 5,
+    elevation: 8,
   },
   findButtonText: {
     color: "#fff",
     fontSize: 15,
     fontWeight: "bold",
+    marginLeft: 6, // Space for icon
   },
   errorText: {
     color: "red",
@@ -689,7 +794,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
     shadowRadius: 3,
-    overflow: "hidden", // Giữ overflow: hidden để danh sách gợi ý tuyến đường không tràn ra ngoài
+    overflow: "hidden", // Keep overflow: hidden so route suggestions don't spill out
     maxHeight: 150,
   },
   suggestedRoutesTitle: {
@@ -722,6 +827,23 @@ const styles = StyleSheet.create({
     color: "#28a745",
     fontWeight: "bold",
     marginLeft: 5,
+  },
+  collapseHandle: {
+    // Removed position: 'absolute', bottom, left, right
+    height: 20, // Height of the handle
+    backgroundColor: "#ffffff",
+    borderBottomLeftRadius: 15,
+    borderBottomRightRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    // borderTopWidth: 1,
+    borderTopColor: "#e0e0e0",
+    // marginTop: 5, // Added margin to separate from content above
+  },
+  collapseHandleText: {
+    fontSize: 20,
+    color: "#666",
+    fontWeight: "bold",
   },
 });
 

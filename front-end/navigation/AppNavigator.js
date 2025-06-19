@@ -1,4 +1,3 @@
-// navigation/AppNavigator.js
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -12,7 +11,6 @@ import HomeScreen from "../screens/user/HomeScreen";
 import CurrentStatusMapScreen from "../screens/user/CurrentStatusMapScreen";
 import SimulationMapScreen from "../screens/user/SimulationMapScreen";
 import RegisterScreen from "../screens/RegisterScreen.web";
-// import MapScreen from "../screens/user/MapScreen.web";
 import AdminDashboardScreen from "../screens/admin/AdminDashboardScreen";
 import AdminFeaturesScreen from "../screens/admin/AdminFeaturesScreen";
 import UserManagementScreen from "../screens/admin/UserManagementScreen";
@@ -30,11 +28,11 @@ function AppTabs() {
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
-          if (route.name === "Trang chủ") {
+          if (route.name === "Home") {
             iconName = focused ? "home" : "home-outline";
-          } else if (route.name === "Hiện Trạng") {
+          } else if (route.name === "CurrentStatusMap") {
             iconName = focused ? "map" : "map-outline";
-          } else if (route.name === "Mô Phỏng") {
+          } else if (route.name === "SimulationMap") {
             iconName = focused ? "analytics" : "analytics-outline";
           }
           return <Ionicons name={iconName} size={size} color={color} />;
@@ -48,9 +46,9 @@ function AppTabs() {
         },
       })}
     >
-      <Tab.Screen name="Trang chủ" component={HomeScreen} />
-      <Tab.Screen name="Hiện Trạng" component={CurrentStatusMapScreen} />
-      <Tab.Screen name="Mô Phỏng" component={SimulationMapScreen} />
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="CurrentStatusMap" component={CurrentStatusMapScreen} />
+      <Tab.Screen name="SimulationMap" component={SimulationMapScreen} />
     </Tab.Navigator>
   );
 }
@@ -60,7 +58,7 @@ function AppStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MainTabs" component={AppTabs} />
-      {/* Thêm các màn hình khác không nằm trong tab bar tại đây nếu cần */}
+      <Stack.Screen name="PersonalInfo" component={PersonalInfoScreen} />
     </Stack.Navigator>
   );
 }
@@ -101,7 +99,7 @@ function AdminStack() {
   );
 }
 
-// Stack Navigator cho xác thực
+// Stack Navigator for authentication
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

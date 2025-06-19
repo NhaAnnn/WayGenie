@@ -246,7 +246,7 @@ const CurrentStatusMapScreen = () => {
       <View style={styles.container}>
         {/* Khu vực hiển thị bản đồ */}
         <View style={styles.mapContainer}>
-          {!mapLoaded && ( // Chỉ hiển thị loading overlay nếu bản đồ chưa tải xong
+          {mapLoaded && ( // Chỉ hiển thị loading overlay nếu bản đồ chưa tải xong
             <View style={styles.loadingOverlay}>
               <ActivityIndicator size="large" color="#007BFF" />
               <Text style={styles.loadingText}>Đang tải bản đồ...</Text>
@@ -255,7 +255,8 @@ const CurrentStatusMapScreen = () => {
           <MapWrapper
             mapboxAccessToken={MAPBOX_PUBLIC_ACCESS_TOKEN}
             startCoords={routeStartCoords}
-            endCoords={endCoords}
+            endCoords={endCoords} // Truyền biến `endCoords` đã được định nghĩa đúng
+            // Truyền MẢNG các GeoJSONs tuyến đường
             routeGeoJSONs={allRoutesGeoJSONs}
             initialCenter={[105.8342, 21.0278]} // Tọa độ trung tâm Hà Nội: [Longitude, Latitude]
             initialZoom={12}
@@ -268,12 +269,10 @@ const CurrentStatusMapScreen = () => {
         </View>
 
         {/* Route Finding Panel cố định ở trên cùng (đặt lên trên MapContainer bằng absolute positioning) */}
-        <View style={styles.topPanel}>
-          <RouteFindingPanel
-            onRouteSelected={handleRouteSelected}
-            onClearRoute={handleClearRoute}
-          />
-        </View>
+        <RouteFindingPanel
+          onRouteSelected={handleRouteSelected}
+          onClearRoute={handleClearRoute}
+        />
 
         {/* Floating Controls for Layers (Đã loại bỏ các điều khiển tiêu chí định tuyến) */}
         <View style={styles.floatingControls}>
@@ -360,7 +359,7 @@ const styles = StyleSheet.create({
     right: 15,
     backgroundColor: "rgba(255, 255, 255, 0.98)",
     borderRadius: 20,
-    padding: 10,
+    padding: 15,
     flexDirection: "column",
     alignItems: "flex-end",
     shadowColor: "#000",
@@ -373,13 +372,13 @@ const styles = StyleSheet.create({
   controlPanelTitle: {
     fontSize: 15,
     fontWeight: "bold",
-    marginBottom: 5,
+    marginBottom: 8,
     color: "#2c3e50",
     textAlign: "right",
   },
   layerButtonsContainer: {
     flexDirection: "row",
-    marginBottom: 5,
+    marginBottom: 8,
     flexWrap: "wrap",
     justifyContent: "flex-end",
   },

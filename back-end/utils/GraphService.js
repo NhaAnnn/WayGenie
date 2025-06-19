@@ -1,7 +1,6 @@
-// utils/GraphService.js
-
 /**
- * Lớp MinPriorityQueue để sử dụng trong thuật toán Dijkstra.
+ * Lớp MinPriorityQueue được tối ưu hơn sử dụng heap (binary heap)
+ * để thêm và bóc phần tử nhanh hơn (O(logN)) so với sắp xếp lại toàn bộ mảng (O(N logN)).
  * Các phần tử được lưu trữ dưới dạng { value: any, priority: number }.
  */
 class MinPriorityQueue {
@@ -9,19 +8,86 @@ class MinPriorityQueue {
     this.values = [];
   }
 
+  /**
+   * Thêm một phần tử mới vào hàng đợi ưu tiên.
+   * @param {*} value - Giá trị của phần tử.
+   * @param {number} priority - Độ ưu tiên của phần tử (số nhỏ hơn = ưu tiên cao hơn).
+   */
   enqueue(value, priority) {
     this.values.push({ value, priority });
-    this.sort(); // Sắp xếp lại sau khi thêm
+    this.bubbleUp();
   }
 
+  /**
+   * Lấy và loại bỏ phần tử có độ ưu tiên thấp nhất (phần tử gốc của heap).
+   * @returns {Object} Phần tử có độ ưu tiên thấp nhất.
+   */
   dequeue() {
-    return this.values.shift(); // Lấy phần tử có độ ưu tiên thấp nhất (đầu mảng)
+    const min = this.values[0];
+    const end = this.values.pop();
+    if (this.values.length > 0) {
+      this.values[0] = end;
+      this.sinkDown();
+    }
+    return min;
   }
 
-  sort() {
-    this.values.sort((a, b) => a.priority - b.priority);
+  /**
+   * Di chuyển phần tử mới thêm vào lên đúng vị trí của nó trong heap.
+   */
+  bubbleUp() {
+    let idx = this.values.length - 1;
+    const element = this.values[idx];
+    while (idx > 0) {
+      let parentIdx = Math.floor((idx - 1) / 2);
+      let parent = this.values[parentIdx];
+      if (element.priority >= parent.priority) break;
+      this.values[parentIdx] = element;
+      this.values[idx] = parent;
+      idx = parentIdx;
+    }
   }
 
+  /**
+   * Di chuyển phần tử gốc (sau khi dequeue) xuống đúng vị trí của nó trong heap.
+   */
+  sinkDown() {
+    let idx = 0;
+    const length = this.values.length;
+    const element = this.values[0];
+    while (true) {
+      let leftChildIdx = 2 * idx + 1;
+      let rightChildIdx = 2 * idx + 2;
+      let leftChild, rightChild;
+      let swap = null; // Index to swap with
+
+      if (leftChildIdx < length) {
+        leftChild = this.values[leftChildIdx];
+        if (leftChild.priority < element.priority) {
+          swap = leftChildIdx;
+        }
+      }
+      if (rightChildIdx < length) {
+        rightChild = this.values[rightChildIdx];
+        if (
+          (swap === null && rightChild.priority < element.priority) ||
+          (swap !== null && rightChild.priority < leftChild.priority)
+        ) {
+          swap = rightChildIdx;
+        }
+      }
+
+      if (swap === null) break;
+      this.values[idx] = this.values[swap];
+      this.values[swap] = element;
+      idx = swap;
+    }
+  }
+
+  /**
+   * Kiểm tra xem hàng đợi có rỗng không.
+   * @returns {boolean} True nếu hàng đợi rỗng, ngược lại là false.
+   */
   isEmpty() {
     return this.values.length === 0;
   }
@@ -36,49 +102,58 @@ class MinPriorityQueue {
  * @returns {number} Tổng trọng số tính toán cho đoạn đường.
  */
 function calculateEdgeWeight(route, criteriaWeights, mode) {
-  // Lấy các giá trị cần thiết từ route
-  const lengthKm = route.lengthKm || 0.01; // Tránh chia cho 0
-  let speedKmH = route.v0PrtKmH || 30; // Vận tốc tối đa mặc định
+  const lengthKm = route.lengthKm || 0.01; // Tránh chia cho 0 nếu độ dài không xác định
+  let speedKmH = route.v0PrtKmH || 30; // Vận tốc mặc định an toàn
 
-  // Cố gắng sử dụng vận tốc thực tế theo mode cụ thể nếu có
-  if (mode === "cycling" && route.vCurPrtSysBike) {
+  // Chọn vận tốc cụ thể theo mode
+  if (
+    mode === "cycling" &&
+    route.vCurPrtSysBike !== undefined &&
+    route.vCurPrtSysBike !== null
+  ) {
     speedKmH = route.vCurPrtSysBike;
-  } else if (mode === "driving" && route.vCurPrtSysCar) {
+  } else if (
+    mode === "driving" &&
+    route.vCurPrtSysCar !== undefined &&
+    route.vCurPrtSysCar !== null
+  ) {
     speedKmH = route.vCurPrtSysCar;
-  } else if (mode === "walking" && route.vCurPrtSysCo) {
-    // Giả định 'CO' là đi bộ nếu không có 'WALKING'
+  } else if (
+    mode === "walking" &&
+    route.vCurPrtSysCo !== undefined &&
+    route.vCurPrtSysCo !== null
+  ) {
+    // Giả định 'CO' là đi bộ nếu không có 'WALKING' riêng
     speedKmH = route.vCurPrtSysCo;
   }
-  // Nếu speedKmH vẫn là 0 hoặc rất nhỏ, đặt một giá trị tối thiểu để tránh lỗi và phản ánh độ khó
-  if (speedKmH <= 0) speedKmH = 10;
+
+  // Đảm bảo tốc độ tối thiểu để tránh chia cho 0 hoặc giá trị quá lớn
+  if (speedKmH <= 0) speedKmH = 5; // Vận tốc tối thiểu hợp lý (ví dụ: 5 km/h)
 
   const durationHours = lengthKm / speedKmH; // Thời gian di chuyển (giờ)
 
-  // --- Tính toán trafficImpactFactor dựa trên VOLVEHPRT(AP) và CAPPRT, hoặc VC ---
-  // Ưu tiên sử dụng VC (Vol/Cap Ratio) nếu có, nếu không, thử dùng VOLVEHPRT(AP) / CAPPRT
-  let dynamicTrafficImpact = 0.1; // Giá trị mặc định thấp
+  // --- Tính toán trafficImpactFactor ---
+  let dynamicTrafficImpact = 0.1; // Giá trị mặc định thấp cho đường thông thoáng
 
   if (route.volCapRatioPrtAP != null && route.volCapRatioPrtAP > 0) {
-    // Nếu có VC ratio, sử dụng nó. Giá trị càng cao, tắc đường càng nhiều.
-    // Chuẩn hóa hoặc nhân với một hệ số để nó có ý nghĩa trong tổng chi phí.
-    dynamicTrafficImpact = route.volCapRatioPrtAP; // VC thường từ 0 đến >1
+    dynamicTrafficImpact = route.volCapRatioPrtAP;
   } else if (
     route.volVehPrtAP != null &&
     route.CAPPRT != null &&
     route.CAPPRT > 0
   ) {
-    // Nếu không có VC, tính từ Volume/Capacity
     dynamicTrafficImpact = route.volVehPrtAP / route.CAPPRT;
   }
 
-  // Giới hạn tác động giao thông để không quá lớn hoặc quá nhỏ
-  dynamicTrafficImpact = Math.min(Math.max(dynamicTrafficImpact, 0.01), 2.0); // Giới hạn từ 0.01 đến 2.0
+  // Giới hạn tác động giao thông trong một khoảng hợp lý
+  dynamicTrafficImpact = Math.min(Math.max(dynamicTrafficImpact, 0.01), 3.0); // Giới hạn từ 0.01 đến 3.0
 
   // Sử dụng pollutionFactor từ dữ liệu route.
-  // Trong thực tế, giá trị này sẽ được cập nhật từ các nguồn dữ liệu ô nhiễm thực tế.
-  const pollutionImpact = route.pollutionFactor || 0.01; // Giá trị mặc định
+  // Trong thực tế, giá trị này cần được cập nhật từ các nguồn dữ liệu ô nhiễm thực tế và liên kết với đoạn đường.
+  const pollutionImpact = route.pollutionFactor || 0.05; // Giá trị mặc định nhỏ
 
-  // Áp dụng trọng số cho từng tiêu chí
+  // Áp dụng trọng số cho từng tiêu chí, sử dụng 0 nếu trọng số không được cung cấp.
+  // Các trọng số nên được chuẩn hóa hoặc có ý nghĩa tương đối.
   const timeCost = durationHours * (criteriaWeights.timeWeight || 0);
   const distanceCost = lengthKm * (criteriaWeights.distanceWeight || 0);
   const trafficCost =
@@ -86,8 +161,8 @@ function calculateEdgeWeight(route, criteriaWeights, mode) {
   const pollutionCost =
     pollutionImpact * (criteriaWeights.pollutionWeight || 0);
 
-  // Tổng chi phí (trọng số) của đoạn đường
-  // Đảm bảo chi phí là một số dương để Dijkstra hoạt động đúng
+  // Tổng chi phí (trọng số) của đoạn đường.
+  // Đảm bảo chi phí là một số dương để Dijkstra hoạt động đúng.
   const totalCost = timeCost + distanceCost + trafficCost + pollutionCost;
   return totalCost > 0 ? totalCost : 0.001; // Đảm bảo chi phí dương nhỏ nhất
 }
@@ -112,121 +187,159 @@ function findMultiCriteriaRoute(
   criteriaWeights,
   mode
 ) {
-  const graph = {}; // Adjacency list: { 'nodeId': [{ neighborId: '...', routeData: { ... } }], ... }
-  const nodeCoords = new Map(); // Map: { 'nodeId': {XCOORD, YCOORD}, ... }
+  const graph = {}; // Danh sách kề: { 'nodeId': [{ neighborId: '...', routeData: { ... } }], ... }
 
-  // 1. Xây dựng đồ thị và Map tọa độ
+  // 1. Xây dựng đồ thị
+  // Đảm bảo tất cả các node đều có trong đồ thị, kể cả những node không có tuyến đường đi ra/vào.
   allCoordinates.forEach((coord) => {
-    graph[coord["NODE-NO"]] = [];
-    nodeCoords.set(coord["NODE-NO"], {
-      XCOORD: coord.XCOORD,
-      YCOORD: coord.YCOORD,
-    });
+    const nodeId = coord["NODE-NO"];
+    if (!graph[nodeId]) {
+      graph[nodeId] = [];
+    }
   });
 
   allRoutes.forEach((route) => {
     const fromNode = route.FROMNODENO;
     const toNode = route.TONODENO;
 
-    if (graph[fromNode] && graph[toNode]) {
-      // Kiểm tra TSYSSET để xem tuyến đường có hỗ trợ mode đã chọn không
+    // Chỉ thêm cạnh nếu cả hai nút tồn tại trong tập hợp allCoordinates
+    if (graph.hasOwnProperty(fromNode) && graph.hasOwnProperty(toNode)) {
       const allowedModes = route.TSYSSET
         ? route.TSYSSET.split(",").map((m) => m.trim().toLowerCase())
         : [];
-      let modeAllowed = true; // Mặc định cho phép nếu không có TSYSSET hoặc không khớp mode cụ thể
+      let modeAllowed = false; // Mặc định không cho phép nếu không có TSYSSET cụ thể
 
-      if (mode === "cycling" && !allowedModes.includes("bike"))
-        modeAllowed = false;
-      if (mode === "driving" && !allowedModes.includes("car"))
-        modeAllowed = false;
-      if (mode === "walking" && !allowedModes.includes("w"))
-        modeAllowed = false; // Giả định 'W' cho Walking
+      // Kiểm tra mode di chuyển hợp lệ
+      if (mode === "cycling" && allowedModes.includes("bike")) {
+        modeAllowed = true;
+      } else if (mode === "driving" && allowedModes.includes("car")) {
+        modeAllowed = true;
+      } else if (
+        mode === "walking" &&
+        (allowedModes.includes("w") || allowedModes.includes("co"))
+      ) {
+        // Added 'co' for walking based on common mapping
+        modeAllowed = true;
+      } else if (!route.TSYSSET || route.TSYSSET.trim() === "") {
+        // Nếu TSYSSET trống hoặc không có, coi như cho phép tất cả các mode mặc định
+        modeAllowed = true;
+      }
 
       if (modeAllowed) {
         // Thêm cạnh đi từ fromNode đến toNode
         graph[fromNode].push({ neighbor: toNode, routeData: route });
-        // Nếu là đường hai chiều hoặc không có hướng cụ thể, thêm cạnh ngược lại
-        // Trong trường hợp này, dữ liệu không chỉ rõ 2 chiều, nên chỉ thêm 1 chiều theo FROM-TO
-        // Nếu cần 2 chiều, bạn sẽ cần logic để thêm cạnh ngược lại và tính toán trọng số tương ứng
+
+        // Nếu tuyến đường là hai chiều (thường có một trường 'ONEWAY' hoặc tương tự),
+        // bạn sẽ thêm cạnh ngược lại ở đây.
+        // Ví dụ: if (!route.ONEWAY || route.ONEWAY === 0) { ... }
+        // Hiện tại, dữ liệu không chỉ rõ hai chiều, nên chỉ thêm một chiều theo FROM-TO.
       }
     }
   });
 
-  // 2. Thuật toán Dijkstra
-  const distances = {}; // Khoảng cách từ startNode đến mỗi nút
-  const previous = {}; // Nút trước đó trong đường đi tối ưu
+  // 2. Chuẩn bị cho Thuật toán Dijkstra
+  const distances = {}; // Khoảng cách từ startNode đến mỗi nút (tổng chi phí)
+  const previous = {}; // Nút và dữ liệu tuyến đường trước đó trong đường đi tối ưu
   const pq = new MinPriorityQueue(); // Hàng đợi ưu tiên
 
-  // Khởi tạo
-  for (let node in graph) {
+  // Khởi tạo tất cả các nút
+  for (const node of Object.keys(graph)) {
     distances[node] = Infinity;
     previous[node] = null;
   }
+
+  // Thiết lập nút bắt đầu
   distances[startNodeNo] = 0;
   pq.enqueue(startNodeNo, 0);
 
-  let totalDuration = 0; // Tổng thời gian
-  let totalDistance = 0; // Tổng khoảng cách (km)
-
+  // 3. Thực thi Thuật toán Dijkstra
   while (!pq.isEmpty()) {
     const { value: currentNode, priority: currentCost } = pq.dequeue();
 
-    if (currentCost > distances[currentNode]) continue; // Đã tìm thấy đường tốt hơn
+    // Nếu đã tìm thấy đường tốt hơn đến currentNode, bỏ qua
+    if (currentCost > distances[currentNode]) {
+      continue;
+    }
 
+    // Nếu đã đến đích, xây dựng đường đi
     if (parseInt(currentNode) === endNodeNo) {
-      // Đã đến đích, xây dựng đường đi
       const path = [];
       let tempNode = endNodeNo;
+      // Dò ngược lại từ đích đến nguồn để xây dựng đường đi
       while (tempNode !== null) {
-        path.unshift(tempNode); // Thêm vào đầu mảng
-        tempNode = previous[tempNode]?.node; // Lấy nút trước đó từ đối tượng previous
+        path.unshift(tempNode); // Thêm vào đầu mảng để có thứ tự đúng
+        // Sử dụng previous[tempNode]?.node để truy cập an toàn
+        tempNode = previous[tempNode] ? previous[tempNode].node : null;
       }
 
       // Tính toán tổng thời gian và khoảng cách thực tế của đường đi đã tìm được
-      let currentTotalDuration = 0;
-      let currentTotalDistance = 0;
+      let actualTotalDurationMinutes = 0;
+      let actualTotalDistanceKm = 0;
       for (let i = 0; i < path.length - 1; i++) {
         const from = path[i];
         const to = path[i + 1];
-        const edge = graph[from].find((edge) => edge.neighbor === to);
-        if (edge) {
-          const route = edge.routeData;
+
+        // Tìm cạnh (routeData) giữa 'from' và 'to' đã được lưu trong `previous[to]`
+        // (chúng ta đã lưu `routeData` vào `previous[neighbor]`)
+        const route = previous[to]?.route;
+
+        if (route) {
           const lengthKm = route.lengthKm || 0.01;
-          let speedKmH = route.v0PrtKmH || 30;
-          if (mode === "cycling" && route.vCurPrtSysBike) {
+          let speedKmH = route.v0PrtKmH || 30; // Default speed
+
+          // Recalculate speed based on mode (same logic as calculateEdgeWeight)
+          if (
+            mode === "cycling" &&
+            route.vCurPrtSysBike !== undefined &&
+            route.vCurPrtSysBike !== null
+          ) {
             speedKmH = route.vCurPrtSysBike;
-          } else if (mode === "driving" && route.vCurPrtSysCar) {
+          } else if (
+            mode === "driving" &&
+            route.vCurPrtSysCar !== undefined &&
+            route.vCurPrtSysCar !== null
+          ) {
             speedKmH = route.vCurPrtSysCar;
-          } else if (mode === "walking" && route.vCurPrtSysCo) {
+          } else if (
+            mode === "walking" &&
+            route.vCurPrtSysCo !== undefined &&
+            route.vCurPrtSysCo !== null
+          ) {
             speedKmH = route.vCurPrtSysCo;
           }
-          if (speedKmH <= 0) speedKmH = 10;
-          currentTotalDuration += (lengthKm / speedKmH) * 60; // Cộng dồn thời gian (phút)
-          currentTotalDistance += lengthKm; // Cộng dồn khoảng cách (km)
+          if (speedKmH <= 0) speedKmH = 5;
+
+          actualTotalDurationMinutes += (lengthKm / speedKmH) * 60; // Convert hours to minutes
+          actualTotalDistanceKm += lengthKm;
         }
       }
-      totalDuration = currentTotalDuration;
-      totalDistance = currentTotalDistance;
 
-      return { path, totalCost: currentCost, totalDuration, totalDistance };
+      return {
+        path,
+        totalCost: currentCost,
+        totalDuration: actualTotalDurationMinutes,
+        totalDistance: actualTotalDistanceKm,
+      };
     }
 
-    // Duyệt qua các hàng xóm
-    for (let edge of graph[currentNode]) {
+    // Duyệt qua các hàng xóm của nút hiện tại
+    for (const edge of graph[currentNode]) {
       const neighbor = edge.neighbor;
       const routeData = edge.routeData;
       const weight = calculateEdgeWeight(routeData, criteriaWeights, mode);
       const newCost = currentCost + weight;
 
+      // Nếu tìm thấy đường đi ngắn hơn đến hàng xóm
       if (newCost < distances[neighbor]) {
         distances[neighbor] = newCost;
-        previous[neighbor] = { node: currentNode, route: routeData }; // Lưu cả route data
+        // Lưu trữ cả nút trước đó VÀ dữ liệu tuyến đường đã sử dụng để đến nút hàng xóm
+        previous[neighbor] = { node: currentNode, route: routeData };
         pq.enqueue(neighbor, newCost);
       }
     }
   }
 
-  return null; // Không tìm thấy đường đi
+  return null; // Không tìm thấy đường đi đến đích
 }
 
 /**
@@ -284,7 +397,7 @@ function findAlternativeRoutes(
 
   for (const type in criteriaProfiles) {
     const weights = criteriaProfiles[type];
-    console.log(`Finding ${type}...`);
+    console.log(`Finding ${type} route for mode: ${mode}...`);
     const route = findMultiCriteriaRoute(
       startNodeNo,
       endNodeNo,
@@ -336,6 +449,6 @@ function getOptimalRouteSuggestion(alternativeRoutes) {
 
 module.exports = {
   findMultiCriteriaRoute,
-  findAlternativeRoutes, // Export the new function
-  getOptimalRouteSuggestion, // Export the new function
+  findAlternativeRoutes,
+  getOptimalRouteSuggestion,
 };

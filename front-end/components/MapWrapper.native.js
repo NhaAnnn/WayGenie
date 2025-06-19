@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from "react";
-import { StyleSheet, View, Text } from "react-native"; // Đã thêm Text vào import
+import { StyleSheet, View, Text } from "react-native";
 import MapboxGL from "@rnmapbox/maps";
 
 const MapWrapper = ({
@@ -10,7 +10,7 @@ const MapWrapper = ({
   initialCenter,
   initialZoom,
   styleURL,
-  onMapLoadedCallback,
+  onMapLoaded, // CHANGED: Renamed from onMapLoadedCallback to onMapLoaded
   children,
 }) => {
   const cameraRef = useRef(null);
@@ -34,20 +34,24 @@ const MapWrapper = ({
 
   useEffect(() => {
     // Adjust camera when start/end/routeGeoJSONs change
+    // This effect should run after onMapReady has fired at least once
     if (
       mapRef.current &&
       (startCoords || endCoords || (routeGeoJSONs && routeGeoJSONs.length > 0))
     ) {
       fitCameraToRoute();
     }
-  }, [startCoords, endCoords, routeGeoJSONs, initialCenter, initialZoom]); // Dependency array bao gồm routeGeoJSONs và các props liên quan camera
+  }, [startCoords, endCoords, routeGeoJSONs, initialCenter, initialZoom]); // Dependency array includes routeGeoJSONs and camera-related props
 
+  // This function is called when MapboxGL.MapView has finished loading its initial style and tiles.
   const onMapReady = () => {
-    if (onMapLoadedCallback) {
-      onMapLoadedCallback();
+    console.log("MapWrapper: MapboxGL.MapView finished loading!");
+    if (onMapLoaded) {
+      // Now onMapLoaded will correctly reference handleMapWrapperLoaded
+      onMapLoaded(); // Call the callback passed from CurrentStatusMapScreen
     }
     // Set initial camera position after map is loaded if no route or points are set yet
-    // This is handled by fitCameraToRoute, but a fallback here ensures initial view
+    // This ensures the map is centered even if no route is selected initially.
     if (
       cameraRef.current &&
       initialCenter &&
@@ -58,27 +62,41 @@ const MapWrapper = ({
       cameraRef.current.setCamera({
         centerCoordinate: initialCenter,
         zoomLevel: initialZoom,
-        animationDuration: 0, // No animation on initial load
+        animationDuration: 0, // No animation on initial load to quickly show the map
       });
     }
   };
 
   const fitCameraToRoute = async () => {
-    if (!cameraRef.current || !mapRef.current) return;
+    if (!cameraRef.current || !mapRef.current) {
+      console.warn("fitCameraToRoute: cameraRef or mapRef not available.");
+      return;
+    }
 
     let allCoords = [];
-    // MapboxGL.PointAnnotation expects [longitude, latitude]
-    // The `coords` in RouteFindingPanel were [lat, lon] then converted to [lon, lat] in onRouteSelected.
-    // Ensure allCoords contains [lon, lat]
-    if (startCoords) allCoords.push(startCoords); // startCoords from CurrentStatusMapScreen is already [lon, lat]
-    if (endCoords) allCoords.push(endCoords); // endCoords from CurrentStatusMapScreen is already [lon, lat]
+    // Ensure allCoords contains [longitude, latitude] pairs
+    if (startCoords) allCoords.push(startCoords);
+    if (endCoords) allCoords.push(endCoords);
 
     // Collect all coordinates from all route GeoJSONs
     if (routeGeoJSONs && routeGeoJSONs.length > 0) {
       routeGeoJSONs.forEach((geoJSON) => {
-        if (geoJSON && geoJSON.coordinates && geoJSON.coordinates.length > 0) {
-          // GeoJSON coordinates are already [longitude, latitude]
+        // Check if geoJSON is valid and has coordinates, assuming LineString type
+        if (
+          geoJSON &&
+          geoJSON.type === "LineString" &&
+          geoJSON.coordinates &&
+          geoJSON.coordinates.length > 0
+        ) {
           allCoords = allCoords.concat(geoJSON.coordinates);
+        } else if (
+          geoJSON &&
+          geoJSON.type === "Feature" &&
+          geoJSON.geometry &&
+          geoJSON.geometry.type === "LineString" &&
+          geoJSON.geometry.coordinates
+        ) {
+          allCoords = allCoords.concat(geoJSON.geometry.coordinates);
         }
       });
     }
@@ -99,14 +117,16 @@ const MapWrapper = ({
         await cameraRef.current.fitBounds(
           bounds.ne,
           bounds.sw,
-          [50, 50, 50, 50], // padding: [top, right, bottom, left] để bản đồ không quá sát đường
+          [50, 50, 50, 50], // padding: [top, right, bottom, left] to avoid cutting off markers/lines
           1000 // animationDuration in milliseconds
         );
+        console.log("MapWrapper: Camera fitted to bounds.");
       } catch (error) {
-        console.error("Lỗi khi điều chỉnh camera theo lộ trình:", error);
+        console.error("MapWrapper: Error adjusting camera to route:", error);
       }
     } else if (initialCenter) {
-      // Fallback to initial center if no route or points
+      // Fallback to initial center if no route or points are set
+      console.log("MapWrapper: Falling back to initial center.");
       cameraRef.current.setCamera({
         centerCoordinate: initialCenter,
         zoomLevel: initialZoom,
@@ -121,14 +141,14 @@ const MapWrapper = ({
         ref={mapRef}
         style={styles.map}
         styleURL={styleURL}
-        onDidFinishLoadingMap={onMapReady}
+        onDidFinishLoadingMap={onMapReady} // This correctly triggers onMapReady
       >
         <MapboxGL.Camera
           ref={cameraRef}
           zoomLevel={initialZoom}
           centerCoordinate={initialCenter}
           animationMode={"flyTo"}
-          animationDuration={0} // Initial animation duration should be 0 for quick setup
+          animationDuration={0} // Initial animation duration set to 0 for quicker display
         />
 
         {/* Start Point Annotation */}
@@ -156,20 +176,26 @@ const MapWrapper = ({
         )}
 
         {/* Render ALL Route Polylines */}
-        {/* Lặp qua mảng routeGeoJSONs để vẽ từng tuyến đường */}
+        {/* Iterate through routeGeoJSONs to draw each route */}
         {routeGeoJSONs &&
           routeGeoJSONs.length > 0 &&
           routeGeoJSONs.map((geoJSON, index) => {
-            // Determine color based on index, cycling through routeColors array
-            // Xác định màu sắc và độ dày dựa trên việc đây là tuyến đường chính (đầu tiên) hay các tuyến đường thay thế
+            // Determine color and line width based on if it's the primary (first) route or alternative routes
             const lineColor = routeColors[index % routeColors.length];
-            const lineWidth = index === 0 ? 6 : 3; // Độ dày lớn hơn cho tuyến chính
+            const lineWidth = index === 0 ? 6 : 3; // Thicker line for the primary route
+
+            // Ensure the GeoJSON structure is correct for ShapeSource
+            // It should be a FeatureCollection or a single Feature with LineString geometry
+            const shapeToRender =
+              geoJSON.type === "Feature"
+                ? geoJSON
+                : { type: "Feature", geometry: geoJSON };
 
             return (
               <MapboxGL.ShapeSource
                 key={`route-${index}`}
                 id={`routeSource-${index}`}
-                shape={geoJSON}
+                shape={shapeToRender} // Use the potentially wrapped GeoJSON
               >
                 <MapboxGL.LineLayer
                   id={`routeLine-${index}`}
