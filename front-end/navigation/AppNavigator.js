@@ -7,7 +7,7 @@ import { Platform, View, ActivityIndicator } from "react-native";
 import { useAuth } from "../context/AuthContext";
 
 // Import các màn hình
-import LoginScreen from "../screens/LoginScreen";
+import LoginScreen from "../screens/LoginScreen.web";
 import HomeScreen from "../screens/user/HomeScreen";
 import CurrentStatusMapScreen from "../screens/user/CurrentStatusMapScreen";
 import SimulationMapScreen from "../screens/user/SimulationMapScreen";

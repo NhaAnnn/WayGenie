@@ -53,7 +53,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // --- GET Route by LINK-NO (alias linkNo) ---
-router.get("/by-linkno/:linkNo", async (req, res) => {
+router.get("  ", async (req, res) => {
   try {
     const route = await Route.findOne({
       "LINK:NO": parseInt(req.params.linkNo),

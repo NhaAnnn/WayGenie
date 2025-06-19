@@ -40,6 +40,61 @@ export default function LoginScreen() {
     }
   };
 
+  //
+  const handleLoginGoogle = async () => {
+    try {
+      // 1. Kiểm tra Google Play Services (Android)
+      await GoogleSignin.hasPlayServices();
+
+      // 2. Đăng nhập bằng Google, lấy idToken và thông tin user
+      const { idToken, user } = await GoogleSignin.signIn();
+
+      // 3. Đăng nhập vào Firebase (optional)
+      const googleCredential = auth.GoogleAuthProvider.credential(idToken);
+      const firebaseUser = await auth().signInWithCredential(googleCredential);
+
+      // 4. Gửi thông tin về backend bằng Axios
+      // const response = await axios.post('localhost:3000/auth/google', {
+      //   idToken, // Backend sẽ verify token này
+      //   email: user.email,
+      //   name: user.name || user.givenName,
+      //   avatar: user.photo, // (optional)
+      // });
+
+      // 5. Xử lý kết quả từ backend
+      if (response.data.success) {
+        navigation.navigate("Home");
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (error) {
+      Alert.alert("Lỗi", error.message);
+    }
+  };
+  // const handleLoginGoogle = async () => {
+  //   try {
+  //     const provider = new GoogleAuthProvider();
+  //     const auth = getAuth(app);
+
+  //     const result = await signInWithPopup(auth, provider);
+
+  //     const res = await fetch("/api/auth/google", {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify({
+  //         name: result.user.displayName,
+  //         email: result.user.email,
+  //       }),
+  //     });
+  //     const data = await res.json();
+  //     dispatch(signInSuccess(data));
+  //     navigate("/");
+  //   } catch (error) {
+  //     console.log("could not sign in with google", error);
+  //   }
+  // };
   // Tính toán kích thước dựa trên kích thước màn hình
   const frameWidth = Math.min(dimensions.width * 0.9, 500); // Tối đa 500px
   const isSmallScreen = dimensions.width < 400;
@@ -126,6 +181,25 @@ export default function LoginScreen() {
                 ĐĂNG NHẬP
               </Text>
             )}
+          </TouchableOpacity>
+          {/* Nút đăng nhập */}
+          <TouchableOpacity
+            style={[
+              styles.loginButtonGoogle,
+              isLoading && styles.buttonDisabled,
+              isSmallScreen && styles.loginButtonSmall,
+            ]}
+            // onPress={handleLoginGoogle}
+            disabled={isLoading}
+          >
+            <Text
+              style={[
+                styles.loginButtonText,
+                isSmallScreen && styles.loginButtonTextSmall,
+              ]}
+            >
+              ĐĂNG NHẬP BẰNG GOOGLE
+            </Text>
           </TouchableOpacity>
 
           {/* Liên kết đăng ký/quên mật khẩu */}
@@ -221,6 +295,13 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     backgroundColor: "#007AFF",
+    padding: 14,
+    borderRadius: 6,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  loginButtonGoogle: {
+    backgroundColor: "#ff0000",
     padding: 14,
     borderRadius: 6,
     alignItems: "center",
