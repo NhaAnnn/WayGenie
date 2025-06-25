@@ -17,6 +17,7 @@ import UserManagementScreen from "../screens/admin/UserManagementScreen";
 import AnnouncementsScreen from "../screens/admin/AnnouncementsScreen";
 import SimulatedTrafficScreen from "../screens/admin/SimulatedTrafficScreen";
 import ConfigureRouteScreen from "../screens/admin/ConfigureRouteScreen";
+import PersonalInfoScreen from "../screens/user/PersonalInfoScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();

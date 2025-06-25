@@ -13,23 +13,25 @@ import {
   Dimensions,
   ActivityIndicator,
   ScrollView,
-  Platform,
+  Platform, // Đảm bảo đã import Platform
   SafeAreaView,
+  Image,
 } from "react-native";
 import MapboxGL from "@rnmapbox/maps";
-// Removed proj4 - assuming backend returns WGS84 (EPSG:4326) coordinates
 
 import RouteFindingPanel from "../../components/RouteFindingPanel.js";
 import { MAPBOX_PUBLIC_ACCESS_TOKEN } from "../../secrets.js";
-import MapWrapper from "../../components/MapWrapper";
+import { BACKEND_API_BASE_URL } from "../../secrets.js";
+import AirQualityMarker from "../../components/AirQualityMarker";
+import AirQualityCallout from "../../components/AirQualityCallout";
 
 const { width, height } = Dimensions.get("window");
 
-// --- API Endpoints (REPLACE WITH YOUR ACTUAL BACKEND URLs) ---
-const API_BASE_URL = "http://10.13.137.143:3000/api";
-const COORDINATES_API_URL = `${API_BASE_URL}/coordinates`;
-const ROUTES_API_URL = `${API_BASE_URL}/routes`;
-// --- END API Endpoints ---
+MapboxGL.setAccessToken(MAPBOX_PUBLIC_ACCESS_TOKEN);
+
+const COORDINATES_API_URL = `${BACKEND_API_BASE_URL}/coordinates`;
+const ROUTES_API_URL = `${BACKEND_API_BASE_URL}/routes`;
+const AIR_QUALITY_API_URL = `${BACKEND_API_BASE_URL}/aqis`;
 
 const SimulationMapScreen = () => {
   const [loading, setLoading] = useState(true);
@@ -38,9 +40,9 @@ const SimulationMapScreen = () => {
     useState(true);
   const [isError, setIsError] = useState(false);
 
-  const [routeStartCoords, setRouteStartCoords] = useState(null); // WGS84: [lon, lat]
-  const [endCoords, setEndCoords] = useState(null); // WGS84: [lon, lat]
-  const [allRoutesGeoJSONs, setAllRoutesGeoJSONs] = useState(null); // Array of GeoJSONs for found routes (WGS84)
+  const [routeStartCoords, setRouteStartCoords] = useState(null);
+  const [endCoords, setEndCoords] = useState(null);
+  const [allRoutesGeoJSONs, setAllRoutesGeoJSONs] = useState(null);
 
   const [trafficNetworkNodesGeoJSON, setTrafficNetworkNodesGeoJSON] =
     useState(null);
@@ -53,19 +55,27 @@ const SimulationMapScreen = () => {
 
   const [allCoordinates, setAllCoordinates] = useState([]);
   const [allRoutes, setAllRoutes] = useState([]);
+  const [rawAirQualityData, setRawAirQualityData] = useState([]);
 
-  // GeoJSON data for map layers
-  const [trafficData, setTrafficData] = useState(null);
-  const [airQualityData, setAirQualityData] = useState(null);
-  const [incidentData, setIncidentData] = useState(null);
+  const [trafficData, setTrafficData] = useState({
+    type: "FeatureCollection",
+    features: [],
+  });
+  const [airQualityData, setAirQualityData] = useState({
+    type: "FeatureCollection",
+    features: [],
+  });
+  const [incidentData, setIncidentData] = useState({
+    type: "FeatureCollection",
+    features: [],
+  });
 
-  // --- Map allCoordinates to a Map for efficient lookup ---
+  const [selectedAqiData, setSelectedAqiData] = useState(null);
+
   const coordinatesMap = useMemo(() => {
     const map = new Map();
     allCoordinates.forEach((coord) => {
-      // Use the actual field name from your MongoDB model for nodes
-      // which is "NODE-NO" based on your schema.
-      map.set(coord["NODE-NO"], coord);
+      map.set(coord["NODE:NO"], coord);
     });
     return map;
   }, [allCoordinates]);
@@ -73,12 +83,14 @@ const SimulationMapScreen = () => {
   const fetchGraphData = useCallback(async () => {
     setIsBackendGraphDataLoading(true);
     setIsError(false);
-    console.log("SimulationMapScreen: Starting backend graph data fetch...");
+    console.log("SimulationMapScreen: Starting backend data fetch...");
     try {
-      const [coordsResponse, routesResponse] = await Promise.allSettled([
-        fetch(COORDINATES_API_URL),
-        fetch(ROUTES_API_URL),
-      ]);
+      const [coordsResponse, routesResponse, airQualityResponse] =
+        await Promise.allSettled([
+          fetch(COORDINATES_API_URL),
+          fetch(ROUTES_API_URL),
+          fetch(AIR_QUALITY_API_URL),
+        ]);
 
       let errorOccurred = false;
 
@@ -116,6 +128,26 @@ const SimulationMapScreen = () => {
         );
       }
 
+      if (
+        airQualityResponse.status === "fulfilled" &&
+        airQualityResponse.value.ok
+      ) {
+        const aqData = await airQualityResponse.value.json();
+        setRawAirQualityData(aqData);
+        console.log(
+          `SimulationMapScreen: Successfully fetched air quality data from backend. Count: ${aqData.length}`
+        );
+      } else {
+        errorOccurred = true;
+        const errorMsg =
+          airQualityResponse.status === "rejected"
+            ? airQualityResponse.reason.message
+            : `HTTP error! status: ${airQualityResponse.value.status}`;
+        console.error(
+          `SimulationMapScreen: Error fetching air quality data from backend: ${errorMsg} from ${AIR_QUALITY_API_URL}`
+        );
+      }
+
       setIsError(errorOccurred);
       console.log(
         `SimulationMapScreen: Graph data fetch complete. Error: ${errorOccurred}`
@@ -138,79 +170,70 @@ const SimulationMapScreen = () => {
     fetchGraphData();
   }, [fetchGraphData]);
 
-  // Effect to process allRoutes and allCoordinates into GeoJSONs for map layers
   useEffect(() => {
     console.log(
-      `SimulationMapScreen: Checking to create GeoJSON. allCoordinates.length: ${allCoordinates.length}, allRoutes.length: ${allRoutes.length}, isError: ${isError}, isBackendGraphDataLoading: ${isBackendGraphDataLoading}`
+      `SimulationMapScreen: Checking to create GeoJSON. allCoordinates.length: ${allCoordinates.length}, allRoutes.length: ${allRoutes.length}, rawAirQualityData.length: ${rawAirQualityData.length}, isError: ${isError}, isBackendGraphDataLoading: ${isBackendGraphDataLoading}`
     );
+
+    const newTrafficFeatures = [];
+    const newAirQualityFeatures = [];
+    const newIncidentFeatures = [];
+    const networkNodesFeatures = [];
 
     if (
       allCoordinates.length > 0 &&
       allRoutes.length > 0 &&
+      rawAirQualityData.length > 0 &&
       !isError &&
       !isBackendGraphDataLoading
     ) {
-      // --- Generate Traffic Data GeoJSON ---
-      const newTrafficFeatures = allRoutes
-        .map((route) => {
-          // Use `coordinatesMap` for efficient lookup
-          const fromCoord = coordinatesMap.get(route.FROMNODENO);
-          const toCoord = coordinatesMap.get(route.TONODENO);
+      allRoutes.forEach((route) => {
+        const fromCoord = coordinatesMap.get(route.FROMNODENO);
+        const toCoord = coordinatesMap.get(route.TONODENO);
 
-          // IMPORTANT: Check if route.geometry exists and is a valid LineString
-          // If your backend provides `route.geometry` directly, use that.
-          // Otherwise, construct a simple LineString from FROMNODENO and TONODENO.
-          // Assuming `route.geometry` is provided by the backend and is WGS84.
-          if (
-            route.geometry &&
-            route.geometry.type === "LineString" &&
-            route.geometry.coordinates &&
-            route.geometry.coordinates.length >= 2
-          ) {
-            return {
-              type: "Feature",
-              properties: {
-                id: route.linkNo, // Using `linkNo` from Mongoose schema
-                VC: route.VC,
-                status:
-                  route.VC <= 0.6
-                    ? "smooth"
-                    : route.VC <= 0.8
-                    ? "moderate"
-                    : "congested",
-                // Add any other route properties from your schema if needed for styling/display
-                // e.g., length: route.length, numLanes: route.NUMLANES
-              },
-              geometry: route.geometry, // Use the geometry directly from backend
-            };
-          } else if (fromCoord && toCoord && route.VC !== undefined) {
-            // Fallback: If `route.geometry` is missing or invalid,
-            // create a straight line from node coordinates.
-            // Use `location.coordinates` which is already [lon, lat] (WGS84)
-            return {
-              type: "Feature",
-              properties: {
-                id: route.linkNo, // Using `linkNo` from Mongoose schema
-                VC: route.VC,
-                status:
-                  route.VC <= 0.6
-                    ? "smooth"
-                    : route.VC <= 0.8
-                    ? "moderate"
-                    : "congested",
-              },
-              geometry: {
-                type: "LineString",
-                coordinates: [
-                  fromCoord.location.coordinates, // [lon, lat]
-                  toCoord.location.coordinates, // [lon, lat]
-                ],
-              },
-            };
-          }
-          return null;
-        })
-        .filter(Boolean); // Remove null entries
+        if (
+          route.geometry &&
+          route.geometry.type === "LineString" &&
+          route.geometry.coordinates &&
+          route.geometry.coordinates.length >= 2
+        ) {
+          newTrafficFeatures.push({
+            type: "Feature",
+            properties: {
+              id: route.linkNo,
+              VC: route.VC,
+              status:
+                route.VC <= 0.6
+                  ? "smooth"
+                  : route.VC <= 0.8
+                  ? "moderate"
+                  : "congested",
+            },
+            geometry: route.geometry,
+          });
+        } else if (fromCoord && toCoord && route.VC !== undefined) {
+          newTrafficFeatures.push({
+            type: "Feature",
+            properties: {
+              id: route.linkNo,
+              VC: route.VC,
+              status:
+                route.VC <= 0.6
+                  ? "smooth"
+                  : route.VC <= 0.8
+                  ? "moderate"
+                  : "congested",
+            },
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                fromCoord.location.coordinates,
+                toCoord.location.coordinates,
+              ],
+            },
+          });
+        }
+      });
 
       setTrafficData({
         type: "FeatureCollection",
@@ -219,24 +242,17 @@ const SimulationMapScreen = () => {
       console.log(
         `SimulationMapScreen: Created GeoJSON for traffic. Feature count: ${newTrafficFeatures.length}.`
       );
-      console.log(
-        "SimulationMapScreen: If traffic lines are straight, ensure your backend 'routes' data provides the `geometry` field with intermediate coordinates."
-      );
 
-      // --- Generate Traffic Network Nodes GeoJSON ---
-      const networkNodesFeatures = [];
       coordinatesMap.forEach((coords, nodeNo) => {
-        // Use `location.coordinates` which is already [lon, lat] (WGS84)
         networkNodesFeatures.push({
           type: "Feature",
           properties: {
             id: `node-${nodeNo}`,
-            // Add any other node properties if available/relevant for display
-            "NODE-NO": nodeNo, // Include the node number
+            "NODE-NO": nodeNo,
           },
           geometry: {
             type: "Point",
-            coordinates: coords.location.coordinates, // [lon, lat]
+            coordinates: coords.location.coordinates,
           },
         });
       });
@@ -248,49 +264,59 @@ const SimulationMapScreen = () => {
         `SimulationMapScreen: Generated traffic network nodes GeoJSON. Count: ${networkNodesFeatures.length}`
       );
 
-      // --- Generate Air Quality Data GeoJSON (from nodes with pollutionFactor) ---
-      const nodePollutionData = new Map();
-      allRoutes.forEach((route) => {
-        if (route.pollutionFactor !== undefined) {
-          const fromNode = route.FROMNODENO;
-          const toNode = route.TONODENO;
-          const pollution = route.pollutionFactor;
+      rawAirQualityData.forEach((aqData, index) => {
+        const pm25Value =
+          aqData.pm25 !== null && aqData.pm25 !== undefined ? aqData.pm25 : 0;
+        const coValue =
+          aqData.co !== null && aqData.co !== undefined ? aqData.co : 0;
+        const no2Value =
+          aqData.no2 !== null && aqData.no2 !== undefined ? aqData.no2 : 0;
+        const so2Value =
+          aqData.so2 !== null && aqData.so2 !== undefined ? aqData.so2 : 0;
+        const o3Value =
+          aqData.o3 !== null && aqData.o3 !== undefined ? aqData.o3 : 0;
+        const aqiValue =
+          aqData.aqi !== null && aqData.aqi !== undefined ? aqData.aqi : 0;
 
-          // Aggregate pollution factor for both ends of the route
-          if (!nodePollutionData.has(fromNode))
-            nodePollutionData.set(fromNode, { sumPollution: 0, count: 0 });
-          const fromNodeData = nodePollutionData.get(fromNode);
-          fromNodeData.sumPollution += pollution;
-          fromNodeData.count += 1;
+        let status = "good";
+        if (aqiValue > 50) status = "moderate";
+        else if (aqiValue > 100) status = "unhealthy_sensitive";
+        else if (aqiValue > 150) status = "unhealthy";
+        else if (aqiValue > 200) status = "hazardous";
+        else if (aqiValue > 300) status = "very_unhealthy";
 
-          if (!nodePollutionData.has(toNode))
-            nodePollutionData.set(toNode, { sumPollution: 0, count: 0 });
-          const toNodeData = nodePollutionData.get(toNode);
-          toNodeData.sumPollution += pollution;
-          toNodeData.count += 1;
-        }
-      });
-
-      const newAirQualityFeatures = [];
-      nodePollutionData.forEach((data, nodeNo) => {
-        const coords = coordinatesMap.get(nodeNo);
-        if (coords && data.count > 0) {
-          const averagePollution = data.sumPollution / data.count;
-          let status = "good";
-          if (averagePollution > 20) status = "unhealthy";
-          else if (averagePollution > 10) status = "moderate";
+        if (aqData.location && aqData.location.coordinates) {
+          const uniqueStationId =
+            aqData.stationUid ||
+            `unknown-station-${index}-${Math.random()
+              .toString(36)
+              .substr(2, 5)}`;
+          if (!aqData.stationUid) {
+            console.warn(
+              `Backend data for station at index ${index} has no stationUid. Using fallback: ${uniqueStationId}`
+            );
+          }
+          console.log(
+            `[useEffect] Feature Index: ${index}, Raw stationUid: ${aqData.stationUid}, Assigned stationId: ${uniqueStationId}`
+          );
 
           newAirQualityFeatures.push({
             type: "Feature",
             properties: {
-              nodeId: nodeNo,
-              pm25: averagePollution,
+              stationId: uniqueStationId,
+              stationName: aqData.stationName || `Trạm ${uniqueStationId}`,
+              aqi: aqiValue,
+              pm25: pm25Value,
+              co: coValue,
+              no2: no2Value,
+              so2: so2Value,
+              o3: o3Value,
               status: status,
+              timestamp: aqData.time,
+              displayPm25: `PM2.5: ${pm25Value.toFixed(1)}`,
+              icon: "air-quality-icon",
             },
-            geometry: {
-              type: "Point",
-              coordinates: coords.location.coordinates, // Use WGS84 coordinates from `location` field
-            },
+            geometry: aqData.location,
           });
         }
       });
@@ -299,14 +325,11 @@ const SimulationMapScreen = () => {
         features: newAirQualityFeatures,
       });
       console.log(
-        `SimulationMapScreen: Created GeoJSON for air quality. Feature count: ${newAirQualityFeatures.length}`
+        `SimulationMapScreen: Created GeoJSON for air quality from backend data. Feature count: ${newAirQualityFeatures.length}`
       );
 
-      // --- Generate Incident Data GeoJSON (using a subset of transformed coordinates and mock properties) ---
-      const newIncidentFeatures = [];
       const availableNodeNumbers = Array.from(coordinatesMap.keys());
 
-      // Add a couple of mock incidents using actual node coordinates
       if (availableNodeNumbers.length > 0) {
         const node1Index = Math.floor(
           Math.random() * availableNodeNumbers.length
@@ -335,7 +358,7 @@ const SimulationMapScreen = () => {
             },
             geometry: {
               type: "Point",
-              coordinates: coords1.location.coordinates, // Use WGS84 coordinates from `location` field
+              coordinates: coords1.location.coordinates,
             },
           });
         }
@@ -344,13 +367,13 @@ const SimulationMapScreen = () => {
             type: "Feature",
             properties: {
               type: "road_closure",
-              description: "Đóng đường (sim)",
+              description: "Đóng đường",
               severity: "medium",
               icon: "roadblock",
             },
             geometry: {
-              type: "Point",
-              coordinates: coords2.location.coordinates, // Use WGS84 coordinates from `location` field
+              type: "Point", // Should be Point for incidents
+              coordinates: coords2.location.coordinates,
             },
           });
         }
@@ -362,34 +385,27 @@ const SimulationMapScreen = () => {
       console.log(
         `SimulationMapScreen: Created GeoJSON for incidents. Feature count: ${newIncidentFeatures.length}`
       );
-    } else if (isError) {
-      console.warn(
-        "SimulationMapScreen: Not creating GeoJSON due to backend data loading error."
-      );
-    } else if (isBackendGraphDataLoading) {
-      console.log(
-        "SimulationMapScreen: GeoJSON not created because backend data is still loading."
-      );
     } else {
+      setTrafficData({ type: "FeatureCollection", features: [] });
+      setAirQualityData({ type: "FeatureCollection", features: [] });
+      setIncidentData({ type: "FeatureCollection", features: [] });
+      setTrafficNetworkNodesGeoJSON({
+        type: "FeatureCollection",
+        features: [],
+      });
       console.warn(
-        "SimulationMapScreen: Not creating GeoJSON because allCoordinates or allRoutes are empty or there's an error after loading.",
-        {
-          allCoordinatesLength: allCoordinates.length,
-          allRoutesLength: allRoutes.length,
-          isError,
-          isBackendGraphDataLoading,
-        }
+        "SimulationMapScreen: GeoJSON states reset to empty FeatureCollections due to loading/error state."
       );
     }
   }, [
     allCoordinates,
     allRoutes,
+    rawAirQualityData,
     isError,
     isBackendGraphDataLoading,
     coordinatesMap,
-  ]); // Added coordinatesMap to dependency array
+  ]);
 
-  // Set overall loading status
   useEffect(() => {
     console.log(
       `SimulationMapScreen: Updating overall loading status. mapLoaded: ${mapLoaded}, isBackendGraphDataLoading: ${isBackendGraphDataLoading}, isError: ${isError}`
@@ -404,15 +420,36 @@ const SimulationMapScreen = () => {
     }
   }, [mapLoaded, isBackendGraphDataLoading, isError]);
 
-  const handleMapWrapperLoaded = useCallback(() => {
-    setMapLoaded(true);
-    console.log("SimulationMapScreen: MapWrapper reported map loaded!");
-  }, []);
+  useEffect(() => {
+    // Tắt popup khi tắt lớp không khí
+    if (!layersVisibility.airQuality && selectedAqiData) {
+      setSelectedAqiData(null);
+      console.log("SimulationMapScreen: Air quality layer off, closing popup.");
+    }
+  }, [layersVisibility.airQuality, selectedAqiData]);
+
+  useEffect(() => {
+    // Đảm bảo render lại marker và layer theo thứ tự cố định khi thay đổi visibility
+    if (mapLoaded) {
+      console.log(
+        "SimulationMapScreen: Re-rendering layers due to visibility change."
+      );
+    }
+  }, [layersVisibility, mapLoaded]);
+
+  const handleMapPress = useCallback(() => {
+    if (selectedAqiData) {
+      setSelectedAqiData(null);
+      console.log(
+        "SimulationMapScreen: Map pressed, closing air quality popup."
+      );
+    }
+  }, [selectedAqiData]);
 
   const toggleLayer = (layerName) => {
-    setLayersVisibility((prevState) => ({
-      ...prevState,
-      [layerName]: !prevState[layerName],
+    setLayersVisibility((prev) => ({
+      ...prev,
+      [layerName]: !prev[layerName],
     }));
     console.log(
       `SimulationMapScreen: Toggling layer ${layerName}. New state: ${!layersVisibility[
@@ -421,7 +458,6 @@ const SimulationMapScreen = () => {
     );
   };
 
-  // Callback from RouteFindingPanel when a route is found
   const handleRouteSelected = useCallback(
     (startNodeNo, endNodeNo, geoJSONs) => {
       if (allCoordinates.length === 0 || isError) {
@@ -431,7 +467,6 @@ const SimulationMapScreen = () => {
         return;
       }
 
-      // Set marker coordinates directly from the coordinatesMap
       const startCoordObj = coordinatesMap.get(startNodeNo);
       const endCoordObj = coordinatesMap.get(endNodeNo);
 
@@ -440,8 +475,6 @@ const SimulationMapScreen = () => {
       );
       setEndCoords(endCoordObj ? endCoordObj.location.coordinates : null);
 
-      // The `geoJSONs` from RouteFindingPanel should ideally already be in WGS84
-      // if your backend is consistent. Removed proj4 transformation here.
       const processedRouteGeoJSONs = geoJSONs
         .map((routeGeoJSON) => {
           if (
@@ -455,19 +488,18 @@ const SimulationMapScreen = () => {
               "SimulationMapScreen: Route GeoJSON Coordinates (first 5):",
               routeGeoJSON.geometry.coordinates.slice(0, 5)
             );
-            // Assuming routeGeoJSON.geometry.coordinates are already WGS84 [lon, lat]
             return routeGeoJSON;
           }
-          return null; // Return null for invalid LineStrings to filter them out
+          return null;
         })
-        .filter(Boolean); // Filter out any null entries
+        .filter(Boolean);
 
       setAllRoutesGeoJSONs(processedRouteGeoJSONs);
       console.log(
         `SimulationMapScreen: Route selected from ${startNodeNo} to ${endNodeNo}. Markers and route set.`
       );
     },
-    [allCoordinates, isError, coordinatesMap] // Added coordinatesMap to dependency array
+    [allCoordinates, isError, coordinatesMap]
   );
 
   const handleClearRoute = useCallback(() => {
@@ -477,111 +509,33 @@ const SimulationMapScreen = () => {
     console.log("SimulationMapScreen: Markers and route cleared.");
   }, []);
 
-  const renderLayer = useMemo(
-    () => (layerKey) => {
-      const dataMap = {
-        traffic: trafficData,
-        airQuality: airQualityData,
-        incidents: incidentData,
-      };
-
-      if (
-        layersVisibility[layerKey] &&
-        dataMap[layerKey] &&
-        dataMap[layerKey].features &&
-        dataMap[layerKey].features.length > 0
-      ) {
-        const layerStyleProps = {};
-        let MapboxGLLayerComponent = null;
-
-        switch (layerKey) {
-          case "traffic":
-            MapboxGLLayerComponent = MapboxGL.LineLayer;
-            layerStyleProps.lineColor = [
-              "match",
-              ["get", "status"],
-              "congested",
-              "red",
-              "moderate",
-              "orange",
-              "smooth",
-              "green",
-              "gray", // default color
-            ];
-            layerStyleProps.lineWidth = 5;
-            layerStyleProps.lineOpacity = 0.7;
-            break;
-          case "airQuality":
-            MapboxGLLayerComponent = MapboxGL.CircleLayer;
-            layerStyleProps.circleColor = [
-              "match",
-              ["get", "status"],
-              "unhealthy",
-              "#e74c3c", // Red
-              "moderate",
-              "#f1c40f", // Yellow
-              "good",
-              "#2ecc71", // Green
-              "#3498db", // default blue
-            ];
-            layerStyleProps.circleRadius = [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              10,
-              ["interpolate", ["linear"], ["get", "pm25"], 0, 3, 60, 8],
-              15,
-              ["interpolate", ["linear"], ["get", "pm25"], 0, 8, 60, 15],
-            ];
-            layerStyleProps.circleOpacity = 0.8;
-            layerStyleProps.circleStrokeColor = "white";
-            layerStyleProps.circleStrokeWidth = 1;
-            break;
-          case "incidents":
-            MapboxGLLayerComponent = MapboxGL.SymbolLayer;
-            layerStyleProps.iconImage = ["get", "icon"];
-            layerStyleProps.iconSize = 1.5;
-            layerStyleProps.textField = ["get", "description"];
-            layerStyleProps.textColor = "black";
-            layerStyleProps.textSize = 12;
-            layerStyleProps.textHaloColor = "white";
-            layerStyleProps.textHaloWidth = 1;
-            layerStyleProps.textAnchor = "top";
-            layerStyleProps.textOffset = [0, 1];
-            break;
-          default:
-            return null;
-        }
-
-        return (
-          <MapboxGL.ShapeSource
-            key={`${layerKey}Source`}
-            id={`${layerKey}Source`}
-            shape={dataMap[layerKey]}
-            images={
-              layerKey === "incidents"
-                ? {
-                    "fire-station": {
-                      uri: "https://placehold.co/50x50/ff0000/ffffff?text=🔥",
-                    },
-                    roadblock: {
-                      uri: "https://placehold.co/50x50/000000/ffffff?text=🚧",
-                    },
-                  }
-                : undefined
-            }
-          >
-            <MapboxGLLayerComponent
-              id={`${layerKey}Layer`}
-              style={layerStyleProps}
-            />
-          </MapboxGL.ShapeSource>
-        );
+  const handleAirQualityFeaturePress = useCallback(
+    (feature) => {
+      console.log(
+        "SimulationMapScreen: Air Quality Marker Pressed:",
+        feature.properties
+      );
+      if (layersVisibility.airQuality) {
+        setSelectedAqiData({
+          ...feature.properties,
+          coordinates: feature.geometry.coordinates,
+        });
       }
-      return null;
     },
-    [trafficData, airQualityData, incidentData, layersVisibility]
+    [layersVisibility.airQuality]
   );
+
+  const handleCloseAqiPanel = useCallback(() => {
+    setSelectedAqiData(null);
+    console.log("SimulationMapScreen: Closing air quality popup.");
+  }, []);
+
+  const mapRef = useRef(null);
+
+  const handleMapLoaded = useCallback(() => {
+    setMapLoaded(true);
+    console.log("SimulationMapScreen: Map loaded!");
+  }, []);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -594,7 +548,7 @@ const SimulationMapScreen = () => {
                 {isError
                   ? "Lỗi tải dữ liệu. Vui lòng kiểm tra kết nối và máy chủ backend."
                   : isBackendGraphDataLoading
-                  ? "Đang tải dữ liệu đồ thị từ máy chủ..."
+                  ? "Đang tải dữ liệu đồ thị và không khí từ máy chủ..."
                   : "Đang tải bản đồ..."}
               </Text>
               {isError && (
@@ -607,67 +561,273 @@ const SimulationMapScreen = () => {
               )}
             </View>
           )}
-          <MapWrapper
-            mapboxAccessToken={MAPBOX_PUBLIC_ACCESS_TOKEN}
-            startCoords={routeStartCoords}
-            endCoords={endCoords}
-            routeGeoJSONs={allRoutesGeoJSONs}
-            initialCenter={[105.8342, 21.0278]} // Hanoi center coordinates: [Longitude, Latitude]
-            initialZoom={12}
+          <MapboxGL.MapView
+            ref={mapRef}
+            style={styles.map}
             styleURL={MapboxGL.Style.OUTDOORS}
-            onMapLoaded={handleMapWrapperLoaded}
+            onDidFinishLoadingMap={handleMapLoaded}
+            onPress={handleMapPress}
           >
-            {/* Markers for start and end points */}
-            {routeStartCoords && (
-              <MapboxGL.PointAnnotation
-                id="startPoint"
-                coordinate={routeStartCoords}
-              >
-                <View style={styles.marker}>
-                  <Text style={styles.markerText}>A</Text>
-                </View>
-              </MapboxGL.PointAnnotation>
-            )}
-            {endCoords && (
-              <MapboxGL.PointAnnotation id="endPoint" coordinate={endCoords}>
-                <View style={[styles.marker, styles.endMarker]}>
-                  <Text style={styles.markerText}>B</Text>
-                </View>
-              </MapboxGL.PointAnnotation>
-            )}
+            <MapboxGL.Camera
+              zoomLevel={12}
+              centerCoordinate={[105.818, 21.0545]}
+              animationMode="easeTo"
+              animationDuration={1000}
+            />
 
-            {/* Layer for all traffic network nodes, visible with traffic layer */}
-            {layersVisibility.traffic && trafficNetworkNodesGeoJSON && (
+            {/* Layer 1: Các nút mạng giao thông (Traffic Network Nodes) - NỀN NHẤT */}
+            {layersVisibility.traffic &&
+              trafficNetworkNodesGeoJSON &&
+              trafficNetworkNodesGeoJSON.features.length > 0 && (
+                <MapboxGL.ShapeSource
+                  id="trafficNetworkNodesSource"
+                  shape={trafficNetworkNodesGeoJSON}
+                >
+                  <MapboxGL.CircleLayer
+                    id="trafficNetworkNodesLayer"
+                    style={{
+                      circleRadius: 3,
+                      circleColor: "#6A057F",
+                      circleOpacity: 0.7,
+                      circleStrokeColor: "white",
+                      circleStrokeWidth: 0.5,
+                    }}
+                  />
+                </MapboxGL.ShapeSource>
+              )}
+
+            {/* Layer 2: Lớp Giao thông (Line Layer) - TRÊN NÚT MẠNG */}
+            {layersVisibility.traffic && trafficData.features.length > 0 && (
               <MapboxGL.ShapeSource
-                id="trafficNetworkNodesSource"
-                shape={trafficNetworkNodesGeoJSON}
+                key={`trafficSource`}
+                id={`trafficSource`}
+                shape={trafficData}
               >
-                <MapboxGL.CircleLayer
-                  id="trafficNetworkNodesLayer"
+                <MapboxGL.LineLayer
+                  id={`trafficLayer`}
                   style={{
-                    circleRadius: 3,
-                    circleColor: "#6A057F",
-                    circleOpacity: 0.7,
-                    circleStrokeColor: "white",
-                    circleStrokeWidth: 0.5,
+                    lineColor: [
+                      "match",
+                      ["get", "status"],
+                      "congested",
+                      "red",
+                      "moderate",
+                      "orange",
+                      "smooth",
+                      "green",
+                      "gray",
+                    ],
+                    lineWidth: 5,
+                    lineOpacity: 0.7,
                   }}
+                  aboveLayerID={
+                    layersVisibility.traffic
+                      ? "trafficNetworkNodesLayer"
+                      : undefined
+                  }
                 />
               </MapboxGL.ShapeSource>
             )}
 
-            {/* Pass dynamic data layers as children */}
-            {["traffic", "airQuality", "incidents"].map(renderLayer)}
-          </MapWrapper>
-        </View>
+            {/* Layer 3: Lớp Chất lượng không khí (Circle Layer) - TRÊN LỚP GIAO THÔNG */}
+            {layersVisibility.airQuality &&
+              airQualityData.features.length > 0 && (
+                <MapboxGL.ShapeSource
+                  key={`airQualityCircleSource`}
+                  id={`airQualityCircleSource`}
+                  shape={airQualityData}
+                >
+                  <MapboxGL.CircleLayer
+                    id={`airQualityCircleLayer`}
+                    style={{
+                      circleColor: [
+                        "match",
+                        ["get", "status"],
+                        "unhealthy_sensitive",
+                        "rgba(255, 165, 0, 0.4)",
+                        "hazardous",
+                        "rgba(126, 0, 35, 0.4)",
+                        "very_unhealthy",
+                        "rgba(139, 0, 139, 0.4)",
+                        "unhealthy",
+                        "rgba(231, 76, 60, 0.4)",
+                        "moderate",
+                        "rgba(241, 196, 15, 0.4)",
+                        "good",
+                        "rgba(46, 204, 113, 0.4)",
+                        "rgba(52, 152, 219, 0.4)",
+                      ],
+                      circleRadius: [
+                        "interpolate",
+                        ["linear"],
+                        ["zoom"],
+                        0,
+                        10,
+                        5,
+                        50,
+                        10,
+                        100,
+                        15,
+                        150,
+                        22,
+                        200,
+                      ],
+                      circleOpacity: 0.8,
+                      circleStrokeColor: [
+                        "match",
+                        ["get", "status"],
+                        "unhealthy",
+                        "#e74c3c",
+                        "moderate",
+                        "#f1c40f",
+                        "good",
+                        "#2ecc71",
+                        "#3498db",
+                      ],
+                      circleStrokeWidth: 1.5,
+                    }}
+                    aboveLayerID={
+                      layersVisibility.traffic ? "trafficLayer" : undefined
+                    }
+                  />
+                </MapboxGL.ShapeSource>
+              )}
 
+            {/* Layer 4: Lớp Sự cố (Symbol Layer) - TRÊN LỚP AQI (hoặc GIAO THÔNG) */}
+            {layersVisibility.incidents && incidentData.features.length > 0 && (
+              <MapboxGL.ShapeSource
+                key={`incidentsSource`}
+                id={`incidentsSource`}
+                shape={incidentData}
+                images={{
+                  "fire-station": {
+                    uri: "https://placehold.co/50x50/ff0000/ffffff?text=🔥",
+                  },
+                  roadblock: {
+                    uri: "https://placehold.co/50x50/000000/ffffff?text=🚗",
+                  },
+                }}
+              >
+                <MapboxGL.SymbolLayer
+                  id={`incidentsLayer`}
+                  style={{
+                    iconImage: ["get", "icon"],
+                    iconSize: 1.5,
+                    textField: ["get", "description"],
+                    textColor: "black",
+                    textSize: 12,
+                    textHaloColor: "white",
+                    textHaloWidth: 1,
+                    textAnchor: "top",
+                    textOffset: [0, 1],
+                  }}
+                  aboveLayerID={
+                    layersVisibility.airQuality
+                      ? "airQualityCircleLayer"
+                      : layersVisibility.traffic
+                      ? "trafficLayer"
+                      : undefined
+                  }
+                />
+              </MapboxGL.ShapeSource>
+            )}
+
+            {/* Layer 5: Tuyến đường được tìm (Luôn trên cùng các lớp dữ liệu MapboxGL) */}
+            {allRoutesGeoJSONs &&
+              allRoutesGeoJSONs.map((geoJSON, index) => (
+                <MapboxGL.ShapeSource
+                  key={`routeSource-${index}`}
+                  id={`routeSource-${index}`}
+                  shape={geoJSON}
+                >
+                  <MapboxGL.LineLayer
+                    id={`routeLayer-${index}`}
+                    style={{
+                      lineColor: "#007BFF",
+                      lineWidth: 4,
+                      lineOpacity: 0.9,
+                    }}
+                    aboveLayerID={
+                      layersVisibility.incidents
+                        ? "incidentsLayer"
+                        : layersVisibility.airQuality
+                        ? "airQualityCircleLayer"
+                        : layersVisibility.traffic
+                        ? "trafficLayer"
+                        : undefined
+                    }
+                  />
+                </MapboxGL.ShapeSource>
+              ))}
+
+            {/*
+              **** ĐÂY LÀ PHẦN SỬA LỖI QUAN TRỌNG CHO THỨ TỰ MARKER ****
+              Đặt tất cả MapboxGL.PointAnnotation SAU các lớp MapboxGL.
+              Thêm các thuộc tính tối ưu hóa rendering vào View bao bọc marker.
+            */}
+
+            {/* Marker bắt đầu và kết thúc */}
+            {routeStartCoords && (
+              <MapboxGL.PointAnnotation
+                id="startPoint"
+                coordinate={routeStartCoords}
+                style={{ zIndex: 10000 }} // zIndex áp dụng cho native view
+              >
+                <View>
+                  <Text style={styles.markerText}>A</Text>
+                </View>
+              </MapboxGL.PointAnnotation>
+            )}
+
+            {/* Marker chất lượng không khí */}
+            {layersVisibility.airQuality &&
+              airQualityData.features.length > 0 && (
+                <>
+                  {airQualityData.features.map((feature) => {
+                    const { geometry, properties } = feature;
+                    if (!geometry || !geometry.coordinates || !properties)
+                      return null;
+                    const { stationId } = properties;
+
+                    return (
+                      <MapboxGL.PointAnnotation
+                        key={`aqi-annotation-${stationId}`}
+                        id={`aqi-annotation-${stationId}`}
+                        coordinate={geometry.coordinates}
+                        onSelected={() => handleAirQualityFeaturePress(feature)}
+                        style={{ zIndex: 10001 }} // zIndex cao hơn để hiển thị trên marker A/B
+                      >
+                        {/* Wrapper View với các thuộc tính tối ưu hóa rendering */}
+                        <View>
+                          <AirQualityMarker stationData={properties} />
+                          {selectedAqiData &&
+                            selectedAqiData.stationId === stationId && (
+                              <MapboxGL.Callout
+                                title={properties.stationName}
+                                style={{ zIndex: 10010 }}
+                              >
+                                <AirQualityCallout
+                                  data={selectedAqiData}
+                                  onClose={handleCloseAqiPanel}
+                                />
+                              </MapboxGL.Callout>
+                            )}
+                        </View>
+                      </MapboxGL.PointAnnotation>
+                    );
+                  })}
+                </>
+              )}
+          </MapboxGL.MapView>
+        </View>
         <RouteFindingPanel
           onRouteSelected={handleRouteSelected}
           onClearRoute={handleClearRoute}
-          allCoordinates={allCoordinates} // Pass allCoordinates for dropdown/input
+          allCoordinates={allCoordinates}
           disabled={loading || isError}
+          style={{ zIndex: 500 }}
         />
-
-        <View style={styles.floatingControls}>
+        <View style={[styles.floatingControls, { zIndex: 500 }]}>
           <Text style={styles.controlPanelTitle}>Lớp:</Text>
           <View style={styles.layerButtonsContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -708,6 +868,9 @@ const styles = StyleSheet.create({
   mapContainer: {
     flex: 1,
   },
+  map: {
+    flex: 1,
+  },
   loadingOverlay: {
     position: "absolute",
     top: 0,
@@ -717,7 +880,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.9)",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 10,
+    zIndex: 2000,
   },
   loadingText: {
     marginTop: 10,
@@ -749,7 +912,7 @@ const styles = StyleSheet.create({
     borderColor: "white",
   },
   endMarker: {
-    backgroundColor: "#e74c3c", // Red for end marker
+    backgroundColor: "#e74c3c",
   },
   markerText: {
     color: "white",
@@ -770,7 +933,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 10,
     elevation: 10,
-    zIndex: 5,
   },
   controlPanelTitle: {
     fontSize: 15,
@@ -788,7 +950,7 @@ const styles = StyleSheet.create({
   layerButton: {
     backgroundColor: "#e0e0e0",
     paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     borderRadius: 18,
     marginTop: 5,
     marginLeft: 8,

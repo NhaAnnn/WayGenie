@@ -21,10 +21,14 @@ app.use(express.json());
 const coordinateRoutes = require("./routes/coordinates"); // MỚI
 const routeRoutes = require("./routes/routes"); // MỚI
 const authRoutes = require("./routes/auth"); // MỚI
+const routeFindingApi = require("./routes/routeFindingApi"); // MỚI
+const aqiRoutes = require("./routes/aqis"); // MỚI
 
 app.use("/api/coordinates", coordinateRoutes); // MỚI
 app.use("/api/routes", routeRoutes); // MỚI
 app.use("/api/auth", authRoutes); // MỚI
+app.use("/api/find-route", routeFindingApi); // MỚI
+app.use("/api/aqis", aqiRoutes); // MỚI
 
 // Route mặc định (Health check)
 app.get("/", (req, res) => {

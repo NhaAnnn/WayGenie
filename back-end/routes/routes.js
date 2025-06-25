@@ -1,28 +1,31 @@
+// routes/routes.js (REFINED FOR CONSISTENCY AND BEST PRACTICES)
 const express = require("express");
 const router = express.Router();
-const Route = require("../models/routes");
-const Coordinate = require("../models/coordinates"); // Ensure this model exists and has a 'location' field with a 2dsphere index
-const GraphService = require("../utils/GraphService"); // Import GraphService
+const Route = require("../models/routes"); // Ensure correct path to your Mongoose model
 
-// Simple middleware to log API access times
+// --- Middleware for logging API access ---
 router.use((req, res, next) => {
   console.log(
     `[Routes API] ${req.method} ${
       req.originalUrl
     } at ${new Date().toISOString()}`
   );
-  next();
+  next(); // Pass control to the next middleware/route handler
 });
 
 // --- GET All Routes ---
-// Supports optional filtering by TSYSSET (e.g., 'CAR' in "B2,BIKE,CAR,Co")
+// Supports optional filtering by TSYSSET
+// Example: GET /api/routes?tsysset=CAR
 router.get("/", async (req, res) => {
   try {
     const query = {};
     if (req.query.tsysset) {
-      // Case-insensitive regex search for TSYSSET
-      query.TSYSSET = { $regex: new RegExp(req.query.tsysset, "i") };
+      // Use the actual DB field name 'TSYSSET' for querying directly,
+      // or if your schema had an alias for this, use the schema field name.
+      // Since TSYSSET doesn't have an alias in the schema (matches DB), use it directly.
+      query.TSYSSET = { $regex: new RegExp(req.query.tsysset, "i") }; // Case-insensitive search
     }
+
     const routes = await Route.find(query);
     res.status(200).json(routes);
   } catch (error) {
@@ -35,11 +38,21 @@ router.get("/", async (req, res) => {
 });
 
 // --- GET Route by MongoDB _id ---
+// Example: GET /api/routes/60f7e1b5c7f8a1a3e4b5c6d7
 router.get("/:id", async (req, res) => {
   try {
-    const route = await Route.findById(req.params.id);
+    const { id } = req.params; // Destructure id from req.params
+
+    // Basic validation for ObjectId format (optional but good practice)
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid route ID format." });
+    }
+
+    const route = await Route.findById(id); // Use the destructured id
     if (!route) {
-      return res.status(404).json({ message: "Route not found" });
+      return res
+        .status(404)
+        .json({ message: `Route with ID ${id} not found.` });
     }
     res.status(200).json(route);
   } catch (error) {
@@ -51,17 +64,24 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// --- GET Route by LINK-NO (alias linkNo) ---
-router.get("  ", async (req, res) => {
+// --- GET Route by linkNo (uses schema alias 'linkNo' which maps to 'LINK:NO' in DB) ---
+// Example: GET /api/routes/by-link-no/5348
+router.get("/by-link-no/:linkNo", async (req, res) => {
   try {
-    // Use the actual MongoDB field name for querying with alias
-    const route = await Route.findOne({
-      "LINK:NO": parseInt(req.params.linkNo),
-    });
+    const linkNo = parseInt(req.params.linkNo);
+
+    if (isNaN(linkNo)) {
+      return res
+        .status(400)
+        .json({ message: "LINK-NO không hợp lệ. Vui lòng cung cấp một số." });
+    }
+
+    // Use 'linkNo' (the alias) for querying. Mongoose will automatically convert it to "LINK:NO" for MongoDB.
+    const route = await Route.findOne({ linkNo: linkNo });
     if (!route) {
       return res
         .status(404)
-        .json({ message: "No route found with this LINK-NO" });
+        .json({ message: `No route found with LINK-NO: ${linkNo}` });
     }
     res.status(200).json(route);
   } catch (error) {
@@ -77,21 +97,30 @@ router.get("  ", async (req, res) => {
 });
 
 // --- GET Routes by FROMNODENO and TONODENO ---
+// Example: GET /api/routes/by-nodes/4122/3784
 router.get("/by-nodes/:fromNode/:toNode", async (req, res) => {
   try {
     const fromNode = parseInt(req.params.fromNode);
     const toNode = parseInt(req.params.toNode);
 
+    if (isNaN(fromNode) || isNaN(toNode)) {
+      return res.status(400).json({
+        message:
+          "FROMNODENO hoặc TONODENO không hợp lệ. Vui lòng cung cấp số nguyên.",
+      });
+    }
+
+    // Query directly using the field names in the DB (which match schema names)
     const routes = await Route.find({ FROMNODENO: fromNode, TONODENO: toNode });
     if (routes.length === 0) {
-      return res
-        .status(404)
-        .json({ message: "No routes found between these nodes" });
+      return res.status(404).json({
+        message: `No routes found between nodes ${fromNode} and ${toNode}`,
+      });
     }
     res.status(200).json(routes);
   } catch (error) {
     console.error(
-      `Error fetching routes by nodes (${fromNode} -> ${toNode}):`,
+      `Error fetching routes by nodes (${req.params.fromNode} -> ${req.params.toNode}):`,
       error
     );
     res.status(500).json({
@@ -102,134 +131,199 @@ router.get("/by-nodes/:fromNode/:toNode", async (req, res) => {
 });
 
 // --- POST Create New Route ---
-// Assumes incoming data directly matches the schema's field types (e.g., numbers for length, V0PRT)
+// Example Body:
+/*
+{
+  "linkNo": 9999,
+  "FROMNODENO": 100,
+  "TONODENO": 200,
+  "NAME": "New Test Link",
+  "TSYSSET": "CAR",
+  "lengthKm": 0.5,
+  "NUMLANES": 2,
+  "CAPPRT": 1500,
+  "v0Prt": 40,
+  "volVehPrtAP": 1200,
+  "VC": 0.8,
+  "volPcuPrtAP": 1000,
+  "volVehTsysMcAP": 800,
+  "volCapRatioPrtAP": 0.75,
+  "LENGTHDIR": "0.5km",
+  "FROMNODEORIENTATION": "N",
+  "vCurPrtSysBike": 35,
+  "vCurPrtSysCar": 30,
+  "vCurPrtSysCo": 25,
+  "vCurPrtSysHgv": 20,
+  "vCurPrtSysMc": 28,
+  "impPrtSysBikeAH": 10,
+  "impPrtSysBikeAP": 1000,
+  "impPrtSysCarAH": 20,
+  "impPrtSysCarAP": 2000,
+  "impPrtSysCoAH": 30,
+  "impPrtSysCoAP": 3000,
+  "impPrtSysHgvAH": 40,
+  "impPrtSysHgvAP": 4000,
+  "impPrtSysMcAH": 50,
+  "impPrtSysMcAP": 5000,
+  "geometry": {
+    "type": "LineString",
+    "coordinates": [[105.78, 10.03], [105.79, 10.04], [105.80, 10.05]]
+  },
+  "pollutionFactor": 0.15
+}
+*/
 router.post("/", async (req, res) => {
   const newRouteData = req.body;
 
-  const newRoute = new Route(newRouteData);
+  // Basic validation: ensure required fields are present and valid
+  // Use the internal schema field names (e.g., linkNo, lengthKm) for validation here.
+  if (
+    !newRouteData.linkNo ||
+    !newRouteData.FROMNODENO ||
+    !newRouteData.TONODENO ||
+    !newRouteData.geometry ||
+    newRouteData.geometry.type !== "LineString" || // Directly check type
+    !newRouteData.geometry.coordinates ||
+    !Array.isArray(newRouteData.geometry.coordinates) ||
+    newRouteData.geometry.coordinates.length < 2 // LineString needs at least 2 points
+  ) {
+    return res.status(400).json({
+      message:
+        "Thiếu trường bắt buộc hoặc dữ liệu không hợp lệ. Đảm bảo 'linkNo', 'FROMNODENO', 'TONODENO', 'geometry' (LineString với ít nhất 2 tọa độ) được cung cấp.",
+    });
+  }
 
   try {
+    const newRoute = new Route(newRouteData); // Mongoose will handle alias mapping automatically
     const savedRoute = await newRoute.save();
-    res.status(201).json(savedRoute);
+    res.status(201).json(savedRoute); // 201 Created status for successful resource creation
   } catch (error) {
     console.error("Error creating new route:", error);
-    res.status(400).json({
-      message: "Could not create new route",
+    if (error.name === "ValidationError") {
+      // Mongoose validation errors (e.g., required fields missing, type mismatch)
+      const errors = Object.keys(error.errors).map((key) => ({
+        field: key,
+        message: error.errors[key].message,
+      }));
+      return res.status(400).json({
+        message: "Lỗi xác thực dữ liệu.",
+        errors: errors,
+      });
+    }
+    if (error.code === 11000) {
+      // Duplicate key error for unique field (linkNo)
+      return res
+        .status(409) // 409 Conflict status for duplicate resource
+        .json({
+          message: `Tuyến đường với LINK-NO ${newRouteData.linkNo} đã tồn tại.`,
+          error: error.message,
+        });
+    }
+    res.status(500).json({
+      message: "Lỗi máy chủ khi tạo tuyến đường mới.",
       error: error.message,
     });
   }
 });
 
-router.post("/find-multi-criteria", async (req, res) => {
-  const { startLon, startLat, endLon, endLat, criteriaWeights, mode } =
-    req.body;
+// --- PUT Update Existing Route by _id ---
+// Example: PUT /api/routes/60f7e1b5c7f8a1a3e4b5c6d7
+/*
+Example Body:
+{
+  "NAME": "Updated Yên Phụ",
+  "NUMLANES": 3
+}
+*/
+router.put("/:id", async (req, res) => {
+  const { id } = req.params;
+  const updateData = req.body;
 
-  if (
-    !startLon ||
-    !startLat ||
-    !endLon ||
-    !endLat ||
-    !criteriaWeights ||
-    !mode
-  ) {
-    return res.status(400).json({
-      message:
-        "Missing required information to find a multi-criteria route. Please provide startLon, startLat, endLon, endLat, criteriaWeights, and mode.",
-    });
+  // Prevent updating 'linkNo' if it's meant to be immutable, or handle it carefully
+  if (updateData.linkNo !== undefined) {
+    // Check for undefined, not just truthy value
+    console.warn(
+      `Cảnh báo: Đang cố gắng cập nhật trường linkNo (${updateData.linkNo}) cho ID ${id}. Đây thường là ID duy nhất và không nên thay đổi.`
+    );
+    // Option 1: Disallow update of linkNo explicitly
+    // delete updateData.linkNo;
+    // Option 2: Allow but ensure uniqueness (Mongoose will handle this with `unique: true` + `runValidators: true`)
+  }
+
+  // Basic validation for ObjectId format
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res
+      .status(400)
+      .json({ message: "Invalid route ID format for update." });
   }
 
   try {
-    // 1. Find the nearest nodes to the Start/End coordinates using geospatial indexing
-    // IMPORTANT: The 'Coordinate' model MUST have a 'location' field defined as GeoJSON Point
-    // and a 2dsphere index on it for $nearSphere to work efficiently.
-    const startCoordDoc = await Coordinate.findOne({
-      location: {
-        $nearSphere: {
-          $geometry: {
-            type: "Point",
-            coordinates: [startLon, startLat], // [longitude, latitude]
-          },
-          $maxDistance: 1000, // Search within a 1km radius
-        },
-      },
-    }).lean(); // .lean() returns a plain JavaScript object, faster for read-only operations
+    // Mongoose handles alias mapping for updateData as well
+    const updatedRoute = await Route.findByIdAndUpdate(id, updateData, {
+      new: true, // Return the updated document
+      runValidators: true, // Run schema validators (e.g., 'required', 'enum', 'unique') on the update operation
+      context: "query", // Important for unique validators to work correctly on update
+    });
 
-    const endCoordDoc = await Coordinate.findOne({
-      location: {
-        $nearSphere: {
-          $geometry: {
-            type: "Point",
-            coordinates: [endLon, endLat],
-          },
-          $maxDistance: 1000, // Search within a 1km radius
-        },
-      },
-    }).lean();
-
-    if (!startCoordDoc || !endCoordDoc) {
-      return res.status(404).json({
-        message:
-          "Could not find a nearby node for the start or end point. Try increasing maxDistance or checking coordinates.",
-      });
+    if (!updatedRoute) {
+      return res
+        .status(404)
+        .json({ message: `Route with ID ${id} not found for update.` });
     }
-
-    const startNodeNo = startCoordDoc["NODE-NO"];
-    const endNodeNo = endCoordDoc["NODE-NO"];
-
-    console.log(
-      `Finding route from NODE-NO ${startNodeNo} to NODE-NO ${endNodeNo} with criteria:`,
-      criteriaWeights
-    );
-
-    // 2. Fetch all nodes and routes to build the graph
-    // For very large datasets, consider optimizing this (e.g., fetching only relevant nearby data)
-    const allCoordinates = await Coordinate.find({}).lean();
-    const allRoutes = await Route.find({}).lean();
-
-    // 3. Use GraphService to find the multi-criteria path
-    const result = GraphService.findMultiCriteriaRoute(
-      startNodeNo,
-      endNodeNo,
-      allCoordinates,
-      allRoutes,
-      criteriaWeights,
-      mode // Travel mode (e.g., 'driving', 'cycling')
-    );
-
-    if (result && result.path.length > 0) {
-      // Convert the path (array of node IDs) into GeoJSON LineString coordinates
-      const routeCoordinates = result.path.map((nodeId) => {
-        const coord = allCoordinates.find((c) => c["NODE-NO"] === nodeId);
-        // Ensure XCOORD is longitude and YCOORD is latitude for GeoJSON
-        return [coord.XCOORD, coord.YCOORD];
-      });
-
-      const geoJsonRoute = {
-        type: "Feature",
-        properties: {
-          duration: result.totalDuration, // Total duration calculated by GraphService
-          distance: result.totalDistance * 1000, // Total distance (km -> meters)
-          cost: result.totalCost, // Total multi-criteria cost
-          // Additional properties can be added here if needed for frontend display
-        },
-        geometry: {
-          type: "LineString",
-          coordinates: routeCoordinates,
-        },
-      };
-
-      // Return an array of GeoJSON features (even if it's just one route)
-      res.status(200).json([geoJsonRoute]);
-    } else {
-      res.status(404).json({
-        message:
-          "No route found with the selected criteria. It might be unreachable or the criteria are too restrictive.",
-      });
-    }
+    res.status(200).json(updatedRoute);
   } catch (error) {
-    console.error("Error finding multi-criteria route:", error);
+    console.error(`Error updating route by ID (${id}):`, error);
+    if (error.name === "ValidationError") {
+      const errors = Object.keys(error.errors).map((key) => ({
+        field: key,
+        message: error.errors[key].message,
+      }));
+      return res.status(400).json({
+        message: "Lỗi xác thực dữ liệu khi cập nhật.",
+        errors: errors,
+      });
+    }
+    if (error.code === 11000) {
+      // Duplicate key error
+      return res.status(409).json({
+        message: `Lỗi khóa trùng lặp khi cập nhật. LINK-NO mới có thể đã tồn tại.`,
+        error: error.message,
+      });
+    }
     res.status(500).json({
-      message: "Server error while finding multi-criteria route.",
+      message: "Lỗi máy chủ khi cập nhật tuyến đường.",
+      error: error.message,
+    });
+  }
+});
+
+// --- DELETE Route by _id ---
+// Example: DELETE /api/routes/60f7e1b5c7f8a1a3e4b5c6d7
+router.delete("/:id", async (req, res) => {
+  const { id } = req.params;
+
+  // Basic validation for ObjectId format
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res
+      .status(400)
+      .json({ message: "Invalid route ID format for deletion." });
+  }
+
+  try {
+    const deletedRoute = await Route.findByIdAndDelete(id);
+
+    if (!deletedRoute) {
+      return res
+        .status(404)
+        .json({ message: `Route with ID ${id} not found for deletion.` });
+    }
+    res
+      .status(200)
+      .json({ message: "Tuyến đường đã được xóa thành công.", deletedRoute });
+  } catch (error) {
+    console.error(`Error deleting route by ID (${id}):`, error);
+    res.status(500).json({
+      message: "Lỗi máy chủ khi xóa tuyến đường.",
       error: error.message,
     });
   }

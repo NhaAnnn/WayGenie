@@ -2,38 +2,13 @@ const mongoose = require("mongoose");
 
 const coordinateSchema = new mongoose.Schema(
   {
-    "NODE-NO": {
-      // Giữ nguyên tên trường từ MongoDB
+    node_id: {
+      // Matches the field name in your screenshot
       type: Number,
       required: true,
       unique: true,
     },
-    XCOORD: {
-      // Kinh độ (Longitude)
-      type: Number,
-      required: true,
-    },
-    YCOORD: {
-      // Vĩ độ (Latitude)
-      type: Number,
-      required: true,
-    },
-    ZCOORD: {
-      // MỚI: Tọa độ Z
-      type: Number,
-    },
-    OSM_NODE_ID: {
-      type: Number,
-    },
-    WKTLOC: {
-      // ĐÃ ĐỔI TÊN: Well-Known Text representation của điểm
-      type: String,
-      required: true,
-    },
-    VOLRPT: {
-      type: Number,
-    },
-    // Thêm một trường GeoJSON Point để dễ dàng thực hiện các truy vấn không gian
+    // The 'location' field directly holds the GeoJSON Point data
     location: {
       type: {
         type: String,
@@ -41,31 +16,30 @@ const coordinateSchema = new mongoose.Schema(
         default: "Point",
       },
       coordinates: {
-        // Cập nhật để phản ánh rõ ràng [longitude, latitude]
+        // [longitude, latitude] - Matches the order in your screenshot
         type: [Number],
         required: true,
       },
     },
+    osm_node_id: {
+      // Matches the field name in your screenshot
+      type: Number,
+    },
+    volrpt: {
+      // Matches the field name in your screenshot
+      type: Number,
+    },
+    // If there are other fields in your actual NODES documents not shown in the snippet, add them here
   },
-  { collection: "NODES" }
-); // Chỉ định tên collection trong MongoDB
+  { collection: "NODES" } // Specify the collection name
+);
 
-// Tạo chỉ mục không gian cho trường 'location'
+// Create a 2dsphere index for geospatial queries
 coordinateSchema.index({ location: "2dsphere" });
 
-// Middleware để tự động điền trường 'location' từ XCOORD và YCOORD
-coordinateSchema.pre("save", function (next) {
-  if (this.XCOORD != null && this.YCOORD != null) {
-    this.location = {
-      type: "Point",
-      // ĐẢM BẢO: coordinates phải theo định dạng [longitude, latitude]
-      // Nếu XCOORD là kinh độ và YCOORD là vĩ độ, thì thứ tự này là đúng.
-      coordinates: [this.XCOORD, this.YCOORD],
-    };
-  }
-  next();
-});
+// No pre-save middleware needed if 'location' is already stored correctly in MongoDB
+// as the frontend/backend will fetch the 'location' field directly.
 
 const Coordinate = mongoose.model("Coordinate", coordinateSchema);
 
-module.exports = Coordinate;
+module.exports = Coordinate; // This exports the Mongoose model for your backend

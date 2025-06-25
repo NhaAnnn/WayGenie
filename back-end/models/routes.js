@@ -1,13 +1,15 @@
+// models/routes.js
 const mongoose = require("mongoose");
 
 const routeSchema = new mongoose.Schema(
   {
-    // linkNo is the internal Mongoose field name, "LINK:NO" is the actual field name in MongoDB/CSV
+    // "LINK:NO" is the actual field name in MongoDB.
+    // We'll use 'linkNo' as the convenient internal name in Mongoose.
     linkNo: {
       type: Number,
       required: true,
       unique: true,
-      alias: "LINK:NO", // Alias for consistent access, matches source data
+      alias: "LINK:NO", // Mongoose will map 'linkNo' to 'LINK:NO' in DB
     },
     FROMNODENO: {
       type: Number,
@@ -25,10 +27,11 @@ const routeSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    // length is the internal Mongoose field, "LENGTH" is the actual field name
-    length: {
+    // "LENGTH" is the actual field name in MongoDB.
+    // Using 'lengthKm' in schema and setting alias to "LENGTH"
+    lengthKm: {
       type: Number,
-      alias: "LENGTH",
+      alias: "LENGTH", // Mongoose will map 'lengthKm' to 'LENGTH' in DB
     },
     NUMLANES: {
       type: Number,
@@ -36,20 +39,20 @@ const routeSchema = new mongoose.Schema(
     CAPPRT: {
       type: Number,
     },
-    // volVehPrtAP maps to "VOLVEHPRT"
+    // "VOLVEHPRT" is the actual field name in MongoDB.
     volVehPrtAP: {
       type: Number,
-      alias: "VOLVEHPRT",
+      alias: "VOLVEHPRT", // Mongoose will map 'volVehPrtAP' to 'VOLVEHPRT' in DB
     },
-    // volPcuPrtAP maps to "VOLPCUPRT"
+    // "VOLPCUPRT" is the actual field name in MongoDB.
     volPcuPrtAP: {
       type: Number,
-      alias: "VOLPCUPRT",
+      alias: "VOLPCUPRT", // Mongoose will map 'volPcuPrtAP' to 'VOLPCUPRT' in DB
     },
-    // volVehTsysMcAP maps to "VOLVEH_TSYS"
+    // "VOLVEH_TSYS" is the actual field name in MongoDB.
     volVehTsysMcAP: {
       type: Number,
-      alias: "VOLVEH_TSYS",
+      alias: "VOLVEH_TSYS", // Mongoose will map 'volVehTsysMcAP' to 'VOLVEH_TSYS' in DB
     },
     LENGTHDIR: {
       type: String,
@@ -59,12 +62,14 @@ const routeSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    // v0Prt maps to "V0PRT"
+    // "V0PRT" is the actual field name in MongoDB.
     v0Prt: {
       type: Number,
-      alias: "V0PRT",
+      alias: "V0PRT", // Mongoose will map 'v0Prt' to 'V0PRT' in DB
     },
-    // These VCUR_PRTSYS fields map directly to their aliased names
+    // These VCUR_PRTSYS fields map directly to their aliased names in MongoDB
+    // Mongoose handles `VCUR_PRTSYS_BIKE` as both schema field and DB field if no alias
+    // is set, but since you explicitly had alias, I'll keep it for clarity.
     vCurPrtSysBike: {
       type: Number,
       alias: "VCUR_PRTSYS_BIKE",
@@ -86,6 +91,7 @@ const routeSchema = new mongoose.Schema(
       alias: "VCUR_PRTSYS_MC",
     },
     // These IMP_PRTSYS fields retain their exact (special character) aliases
+    // Mongoose supports aliases for fields with special characters.
     impPrtSysBikeAH: { type: Number, alias: "IMP_PRTSYS(BIKE,AH)" },
     impPrtSysBikeAP: { type: Number, alias: "IMP_PRTSYS(BIKE,AP)" },
     impPrtSysCarAH: { type: Number, alias: "IMP_PRTSYS(CAR,AH)" },
@@ -99,10 +105,10 @@ const routeSchema = new mongoose.Schema(
     VC: {
       type: Number,
     },
-    // volCapRatioPrtAP maps to "VOLCAPRATIOPRT"
+    // "VOLCAPRATIOPRT" is the actual field name in MongoDB.
     volCapRatioPrtAP: {
       type: Number,
-      alias: "VOLCAPRATIOPRT",
+      alias: "VOLCAPRATIOPRT", // Mongoose will map 'volCapRatioPrtAP' to 'VOLCAPRATIOPRT' in DB
     },
     // GeoJSON 'geometry' field for storing LineString data
     geometry: {
@@ -116,11 +122,7 @@ const routeSchema = new mongoose.Schema(
         required: true,
       },
     },
-
-    pollutionFactor: {
-      type: Number,
-      default: 0.1, // Default value, can be overridden or calculated
-    },
+    // This field seems to be custom for your application logic
   },
   { collection: "LINKS" } // Ensure the collection name is correct
 );

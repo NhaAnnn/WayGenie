@@ -86,7 +86,7 @@ const RouteDetailsModal = ({ isVisible, onClose, route }) => {
               </Text>
             )}
           </ScrollView>
-
+          {/* 
           <TouchableOpacity
             style={styles.startButton}
             onPress={() => {
@@ -98,7 +98,7 @@ const RouteDetailsModal = ({ isVisible, onClose, route }) => {
             }}
           >
             <Text style={styles.startButtonText}>Bắt đầu Điều hướng</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
       </View>
     </Modal>
