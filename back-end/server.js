@@ -18,17 +18,17 @@ app.use(express.json());
 
 // Định nghĩa các routes (API endpoints)
 
-const coordinateRoutes = require("./routes/coordinates"); // MỚI
-const routeRoutes = require("./routes/routes"); // MỚI
-const authRoutes = require("./routes/auth"); // MỚI
-const routeFindingApi = require("./routes/routeFindingApi"); // MỚI
-const aqiRoutes = require("./routes/aqis"); // MỚI
+const coordinateRoutes = require("./routes/coordinates");
+const routeRoutes = require("./routes/routes");
+const authRoutes = require("./routes/auth");
+const findRoute = require("./routes/findRoute"); // Đảm bảo đường dẫn đúng đến file findRoute.js
+const aqiRoutes = require("./routes/aqis");
 
-app.use("/api/coordinates", coordinateRoutes); // MỚI
-app.use("/api/routes", routeRoutes); // MỚI
-app.use("/api/auth", authRoutes); // MỚI
-app.use("/api/find-route", routeFindingApi); // MỚI
-app.use("/api/aqis", aqiRoutes); // MỚI
+app.use("/api/coordinates", coordinateRoutes);
+app.use("/api/routes", routeRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/find-route", findRoute);
+app.use("/api/aqis", aqiRoutes);
 
 // Route mặc định (Health check)
 app.get("/", (req, res) => {
