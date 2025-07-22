@@ -3,13 +3,11 @@ const mongoose = require("mongoose");
 
 const routeSchema = new mongoose.Schema(
   {
-    // "LINK:NO" is the actual field name in MongoDB.
-    // We'll use 'linkNo' as the convenient internal name in Mongoose.
     linkNo: {
       type: Number,
       required: true,
       unique: true,
-      alias: "LINK:NO", // Mongoose will map 'linkNo' to 'LINK:NO' in DB
+      alias: "LINK:NO",
     },
     FROMNODENO: {
       type: Number,
@@ -27,11 +25,10 @@ const routeSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    // "LENGTH" is the actual field name in MongoDB.
-    // Using 'lengthKm' in schema and setting alias to "LENGTH"
+
     lengthKm: {
       type: Number,
-      alias: "LENGTH", // Mongoose will map 'lengthKm' to 'LENGTH' in DB
+      alias: "LENGTH",
     },
     NUMLANES: {
       type: Number,
@@ -39,12 +36,12 @@ const routeSchema = new mongoose.Schema(
     CAPPRT: {
       type: Number,
     },
-    // "VOLVEHPRT" is the actual field name in MongoDB.
+
     volVehPrtAP: {
       type: Number,
       alias: "VOLVEHPRT", // Mongoose will map 'volVehPrtAP' to 'VOLVEHPRT' in DB
     },
-    // "VOLPCUPRT" is the actual field name in MongoDB.
+
     volPcuPrtAP: {
       type: Number,
       alias: "VOLPCUPRT", // Mongoose will map 'volPcuPrtAP' to 'VOLPCUPRT' in DB
@@ -67,9 +64,7 @@ const routeSchema = new mongoose.Schema(
       type: Number,
       alias: "V0PRT", // Mongoose will map 'v0Prt' to 'V0PRT' in DB
     },
-    // These VCUR_PRTSYS fields map directly to their aliased names in MongoDB
-    // Mongoose handles `VCUR_PRTSYS_BIKE` as both schema field and DB field if no alias
-    // is set, but since you explicitly had alias, I'll keep it for clarity.
+
     vCurPrtSysBike: {
       type: Number,
       alias: "VCUR_PRTSYS_BIKE",
@@ -92,16 +87,16 @@ const routeSchema = new mongoose.Schema(
     },
     // These IMP_PRTSYS fields retain their exact (special character) aliases
     // Mongoose supports aliases for fields with special characters.
-    impPrtSysBikeAH: { type: Number, alias: "IMP_PRTSYS(BIKE,AH)" },
-    impPrtSysBikeAP: { type: Number, alias: "IMP_PRTSYS(BIKE,AP)" },
-    impPrtSysCarAH: { type: Number, alias: "IMP_PRTSYS(CAR,AH)" },
-    impPrtSysCarAP: { type: Number, alias: "IMP_PRTSYS(CAR,AP)" },
-    impPrtSysCoAH: { type: Number, alias: "IMP_PRTSYS(CO,AH)" },
-    impPrtSysCoAP: { type: Number, alias: "IMP_PRTSYS(CO,AP)" },
-    impPrtSysHgvAH: { type: Number, alias: "IMP_PRTSYS(HGV,AH)" },
-    impPrtSysHgvAP: { type: Number, alias: "IMP_PRTSYS(HGV,AP)" },
-    impPrtSysMcAH: { type: Number, alias: "IMP_PRTSYS(MC,AH)" },
-    impPrtSysMcAP: { type: Number, alias: "IMP_PRTSYS(MC,AP)" },
+    impPrtSysBikeAH: { type: Number, alias: "IMP_PRTSYS_BIKE_AH" },
+    impPrtSysBikeAP: { type: Number, alias: "IMP_PRTSYS_BIKE_AP" },
+    impPrtSysCarAH: { type: Number, alias: "IMP_PRTSYS_CAR_AH" },
+    impPrtSysCarAP: { type: Number, alias: "IMP_PRTSYS_CAR_AP" },
+    impPrtSysCoAH: { type: Number, alias: "IMP_PRTSYS_CO_AH" },
+    impPrtSysCoAP: { type: Number, alias: "IMP_PRTSYS_CO_AP" },
+    impPrtSysHgvAH: { type: Number, alias: "IMP_PRTSYS_HGV_AH" },
+    impPrtSysHgvAP: { type: Number, alias: "IMP_PRTSYS_HGV_AP" },
+    impPrtSysMcAH: { type: Number, alias: "IMP_PRTSYS_MC_AH" },
+    impPrtSysMcAP: { type: Number, alias: "IMP_PRTSYS_MC_AP" },
     VC: {
       type: Number,
     },
