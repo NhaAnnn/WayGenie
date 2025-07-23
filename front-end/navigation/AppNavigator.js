@@ -18,6 +18,12 @@ import AnnouncementsScreen from "../screens/admin/AnnouncementsScreen";
 import SimulatedTrafficScreen from "../screens/admin/SimulatedTrafficScreen";
 import ConfigureRouteScreen from "../screens/admin/ConfigureRouteScreen";
 import PersonalInfoScreen from "../screens/user/PersonalInfoScreen";
+import StationManagement from "../screens/admin/StationManagement";
+import CordinateManagement from "../screens/admin/CordinateManagement";
+import RouteManagement from "../screens/admin/RouteManagement.web";
+import UploadManagement from "../screens/admin/UploadManagement";
+import ForgotPassword from "../screens/ForgotPassword";
+import ResetPassword from "../screens/ResetPassword";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -69,6 +75,7 @@ function WebStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="PersonalInfoScreen" component={PersonalInfoScreen} />
       <Stack.Screen
         name="CurrentStatusMap"
         component={CurrentStatusMapScreen}
@@ -88,10 +95,16 @@ function AdminStack() {
       <Stack.Screen name="AdminFeatures" component={AdminFeaturesScreen} />
       <Stack.Screen name="UserManagement" component={UserManagementScreen} />
       <Stack.Screen
+        name="CoordinateManagement"
+        component={CordinateManagement}
+      />
+      <Stack.Screen
         name="SimulatedTraffic"
         component={SimulatedTrafficScreen}
       />
-      <Stack.Screen name="Announcements" component={AnnouncementsScreen} />
+      <Stack.Screen name="RouteManagement" component={RouteManagement} />
+      <Stack.Screen name="StationManagement" component={StationManagement} />
+      <Stack.Screen name="UploadManagement" component={UploadManagement} />
       <Stack.Screen
         name="ConfigureRouteScreen"
         component={ConfigureRouteScreen}
@@ -106,6 +119,8 @@ function AuthStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
+      <Stack.Screen name="ResetPassword" component={ResetPassword} />
     </Stack.Navigator>
   );
 }
