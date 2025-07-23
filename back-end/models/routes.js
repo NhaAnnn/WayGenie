@@ -26,9 +26,9 @@ const routeSchema = new mongoose.Schema(
       trim: true,
     },
 
-    lengthKm: {
+    LENGTH: {
       type: Number,
-      alias: "LENGTH",
+      // alias: "LENGTH",
     },
     NUMLANES: {
       type: Number,
@@ -37,19 +37,19 @@ const routeSchema = new mongoose.Schema(
       type: Number,
     },
 
-    volVehPrtAP: {
+    VOLVEHPRT: {
       type: Number,
-      alias: "VOLVEHPRT", // Mongoose will map 'volVehPrtAP' to 'VOLVEHPRT' in DB
+      // alias: "VOLVEHPRT", // Mongoose will map 'volVehPrtAP' to 'VOLVEHPRT' in DB
     },
 
-    volPcuPrtAP: {
+    VOLPCUPRT: {
       type: Number,
-      alias: "VOLPCUPRT", // Mongoose will map 'volPcuPrtAP' to 'VOLPCUPRT' in DB
+      // alias: "VOLPCUPRT", // Mongoose will map 'volPcuPrtAP' to 'VOLPCUPRT' in DB
     },
     // "VOLVEH_TSYS" is the actual field name in MongoDB.
-    volVehTsysMcAP: {
+    VOLVEH_TSYS: {
       type: Number,
-      alias: "VOLVEH_TSYS", // Mongoose will map 'volVehTsysMcAP' to 'VOLVEH_TSYS' in DB
+      // alias: "VOLVEH_TSYS", // Mongoose will map 'volVehTsysMcAP' to 'VOLVEH_TSYS' in DB
     },
     LENGTHDIR: {
       type: String,
@@ -60,14 +60,14 @@ const routeSchema = new mongoose.Schema(
       trim: true,
     },
     // "V0PRT" is the actual field name in MongoDB.
-    v0Prt: {
+    V0PRT: {
       type: Number,
-      alias: "V0PRT", // Mongoose will map 'v0Prt' to 'V0PRT' in DB
+      // alias: "V0PRT", // Mongoose will map 'v0Prt' to 'V0PRT' in DB
     },
 
-    vCurPrtSysBike: {
+    VCUR_PRTSYS_BIKE: {
       type: Number,
-      alias: "VCUR_PRTSYS_BIKE",
+      // alias: "VCUR_PRTSYS_BIKE",
     },
     vCurPrtSysCar: {
       type: Number,

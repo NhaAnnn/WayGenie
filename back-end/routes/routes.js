@@ -65,7 +65,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // --- GET Route by linkNo (uses schema alias 'linkNo' which maps to 'LINK:NO' in DB) ---
-// Example: GET /api/routes/by-link-no/5348
+
 router.get("/by-link-no/:linkNo", async (req, res) => {
   try {
     const linkNo = parseInt(req.params.linkNo);
@@ -130,48 +130,6 @@ router.get("/by-nodes/:fromNode/:toNode", async (req, res) => {
   }
 });
 
-// --- POST Create New Route ---
-// Example Body:
-/*
-{
-  "linkNo": 9999,
-  "FROMNODENO": 100,
-  "TONODENO": 200,
-  "NAME": "New Test Link",
-  "TSYSSET": "CAR",
-  "lengthKm": 0.5,
-  "NUMLANES": 2,
-  "CAPPRT": 1500,
-  "v0Prt": 40,
-  "volVehPrtAP": 1200,
-  "VC": 0.8,
-  "volPcuPrtAP": 1000,
-  "volVehTsysMcAP": 800,
-  "volCapRatioPrtAP": 0.75,
-  "LENGTHDIR": "0.5km",
-  "FROMNODEORIENTATION": "N",
-  "vCurPrtSysBike": 35,
-  "vCurPrtSysCar": 30,
-  "vCurPrtSysCo": 25,
-  "vCurPrtSysHgv": 20,
-  "vCurPrtSysMc": 28,
-  "impPrtSysBikeAH": 10,
-  "impPrtSysBikeAP": 1000,
-  "impPrtSysCarAH": 20,
-  "impPrtSysCarAP": 2000,
-  "impPrtSysCoAH": 30,
-  "impPrtSysCoAP": 3000,
-  "impPrtSysHgvAH": 40,
-  "impPrtSysHgvAP": 4000,
-  "impPrtSysMcAH": 50,
-  "impPrtSysMcAP": 5000,
-  "geometry": {
-    "type": "LineString",
-    "coordinates": [[105.78, 10.03], [105.79, 10.04], [105.80, 10.05]]
-  },
-  "pollutionFactor": 0.15
-}
-*/
 router.post("/", async (req, res) => {
   const newRouteData = req.body;
 
@@ -226,15 +184,6 @@ router.post("/", async (req, res) => {
   }
 });
 
-// --- PUT Update Existing Route by _id ---
-// Example: PUT /api/routes/60f7e1b5c7f8a1a3e4b5c6d7
-/*
-Example Body:
-{
-  "NAME": "Updated Yên Phụ",
-  "NUMLANES": 3
-}
-*/
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const updateData = req.body;

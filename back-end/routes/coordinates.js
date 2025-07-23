@@ -1,4 +1,4 @@
-// routes/coordinates.js (UPDATED)
+// routes/coordinates.js
 const express = require("express");
 const router = express.Router();
 const Coordinate = require("../models/coordinates"); // Ensure this path is correct
@@ -26,43 +26,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-// --- GET Coordinate by node_id ---
-// Using node_id as a parameter to find a specific coordinate
-router.get("/:nodeId", async (req, res) => {
-  // Changed parameter name to nodeId
-  try {
-    // Parse nodeId to an integer for comparison with Number type in MongoDB
-    const nodeId = parseInt(req.params.nodeId);
-
-    // Basic validation for nodeId
-    if (isNaN(nodeId)) {
-      return res
-        .status(400)
-        .json({ message: "node_id không hợp lệ. Vui lòng cung cấp một số." });
-    }
-
-    const coordinate = await Coordinate.findOne({
-      node_id: nodeId, // <--- CHANGED: Query by the "node_id" field
-    });
-
-    if (!coordinate) {
-      return res
-        .status(404)
-        .json({ message: `Không tìm thấy tọa độ với node_id: ${nodeId}` });
-    }
-
-    res.status(200).json(coordinate);
-  } catch (error) {
-    console.error(
-      `Lỗi khi lấy tọa độ theo node_id (${req.params.nodeId}):`,
-      error
-    );
-    res
-      .status(500)
-      .json({ message: "Lỗi máy chủ khi lấy tọa độ", error: error.message });
-  }
-});
-
 // --- POST: Add a new Coordinate ---
 router.post("/", async (req, res) => {
   // Extract data from the request body
@@ -77,11 +40,9 @@ router.post("/", async (req, res) => {
         node_id: newCoordinateData.node_id,
       }); // <--- CHANGED: Query by node_id
       if (existingCoordinate) {
-        return res
-          .status(409)
-          .json({
-            message: `Tọa độ với node_id ${newCoordinateData.node_id} đã tồn tại.`,
-          });
+        return res.status(409).json({
+          message: `Tọa độ với node_id ${newCoordinateData.node_id} đã tồn tại.`,
+        });
       }
     }
 
@@ -98,11 +59,9 @@ router.post("/", async (req, res) => {
     }
     if (error.code === 11000) {
       // Duplicate key error
-      return res
-        .status(409)
-        .json({
-          message: `Lỗi trùng lặp: node_id ${newCoordinateData.node_id} đã tồn tại.`,
-        }); // <--- CHANGED: message uses node_id
+      return res.status(409).json({
+        message: `Lỗi trùng lặp: node_id ${newCoordinateData.node_id} đã tồn tại.`,
+      }); // <--- CHANGED: message uses node_id
     }
     res
       .status(500)
@@ -140,35 +99,29 @@ router.put("/:nodeId", async (req, res) => {
     );
 
     if (!updatedCoordinate) {
-      return res
-        .status(404)
-        .json({
-          message: `Không tìm thấy tọa độ với node_id: ${nodeId} để cập nhật.`,
-        });
+      return res.status(404).json({
+        message: `Không tìm thấy tọa độ với node_id: ${nodeId} để cập nhật.`,
+      });
     }
 
     res.status(200).json(updatedCoordinate);
   } catch (error) {
     console.error(`Lỗi khi cập nhật tọa độ với node_id (${nodeId}):`, error); // <--- CHANGED: message uses node_id
     if (error.name === "ValidationError") {
-      return res
-        .status(400)
-        .json({
-          message: "Dữ liệu cập nhật không hợp lệ",
-          errors: error.errors,
-        });
+      return res.status(400).json({
+        message: "Dữ liệu cập nhật không hợp lệ",
+        errors: error.errors,
+      });
     }
     if (error.code === 11000) {
       return res
         .status(409)
         .json({ message: "Lỗi trùng lặp dữ liệu khi cập nhật." });
     }
-    res
-      .status(500)
-      .json({
-        message: "Lỗi máy chủ khi cập nhật tọa độ",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Lỗi máy chủ khi cập nhật tọa độ",
+      error: error.message,
+    });
   }
 });
 
@@ -190,24 +143,72 @@ router.delete("/:nodeId", async (req, res) => {
     }); // <--- CHANGED: Query by node_id
 
     if (!deletedCoordinate) {
-      return res
-        .status(404)
-        .json({
-          message: `Không tìm thấy tọa độ với node_id: ${nodeId} để xóa.`,
-        });
+      return res.status(404).json({
+        message: `Không tìm thấy tọa độ với node_id: ${nodeId} để xóa.`,
+      });
     }
 
-    res
-      .status(200)
-      .json({
-        message: `Tọa độ với node_id: ${nodeId} đã được xóa thành công.`,
-        deletedCoordinate,
-      });
+    res.status(200).json({
+      message: `Tọa độ với node_id: ${nodeId} đã được xóa thành công.`,
+      deletedCoordinate,
+    });
   } catch (error) {
     console.error(`Lỗi khi xóa tọa độ với node_id (${nodeId}):`, error); // <--- CHANGED: message uses node_id
     res
       .status(500)
       .json({ message: "Lỗi máy chủ khi xóa tọa độ", error: error.message });
+  }
+});
+
+// Thêm vào routes/coordinates.js
+router.get("/nearby", async (req, res) => {
+  try {
+    const { lon, lat, limit = 1 } = req.query;
+
+    // Validate input
+    if (!lon || !lat) {
+      return res.status(400).json({
+        error: "Thiếu tham số bắt buộc",
+        details: "Vui lòng cung cấp cả longitude và latitude",
+      });
+    }
+
+    const coordinates = await Coordinate.find({
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [parseFloat(lon), parseFloat(lat)],
+          },
+          $maxDistance: 5000, // 5km
+        },
+      },
+    }).limit(parseInt(limit));
+
+    if (coordinates.length === 0) {
+      return res.status(404).json({
+        error: "Không tìm thấy node nào trong phạm vi 5km",
+        request: { lon, lat },
+      });
+    }
+
+    // Format response data
+    const result = coordinates.map((coord) => ({
+      node_id: coord.node_id,
+      location: {
+        type: "Point",
+        coordinates: coord.location.coordinates,
+      },
+      properties: coord.properties, // Thêm các thuộc tính khác nếu cần
+    }));
+
+    res.json(result);
+  } catch (error) {
+    console.error("Lỗi API /nearby:", error);
+    res.status(500).json({
+      error: "Lỗi server khi tìm node gần nhất",
+      details: error.message,
+    });
   }
 });
 

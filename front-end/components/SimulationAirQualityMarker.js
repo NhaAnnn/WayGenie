@@ -1,8 +1,8 @@
-// AirQualityMarker.js (Đã sửa đổi)
+// AirQualityMarker.js
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 
-// Hàm xác định trạng thái và màu sắc dựa trên giá trị AQI
+// Hàm xác định trạng thái và màu sắc dựa trên giá trị AQI (không thay đổi)
 const getAqiStatusAndColor = (aqi) => {
   if (typeof aqi !== "number" || isNaN(aqi)) {
     return { status: "unknown", color: "#c0c0c0", textColor: "#ffffff" }; // Grey for unknown
@@ -41,7 +41,7 @@ const AirQualityMarker = ({ stationData }) => {
 
 const styles = StyleSheet.create({
   markerContainer: {
-    width: 45, // Tăng kích thước một chút để số dễ đọc hơn
+    width: 45, // Kích thước cố định của marker
     height: 45,
     borderRadius: 22.5, // Hình tròn
     justifyContent: "center",
@@ -53,12 +53,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 3,
     elevation: 5,
-    zIndex: 1000, // Đảm bảo marker luôn hiển thị trên cùng
   },
   aqiText: {
     fontWeight: "bold",
-    fontSize: 18, // Tăng cỡ chữ
-    lineHeight: 20,
+    fontSize: 18,
+
+    lineHeight: 18 * 1.2,
+    textAlignVertical: "center",
+    textAlign: "center",
   },
 });
 

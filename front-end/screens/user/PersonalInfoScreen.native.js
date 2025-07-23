@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,26 +7,53 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  Alert, // Import Alert for user feedback
+  Alert,
 } from "react-native";
+import { BACKEND_API_BASE_URL } from "../../secrets.js";
 
 const PersonalInfoScreen = ({ navigation }) => {
-  // State for editable user information
-  const [name, setName] = useState("Nguyễn Văn A");
-  const [email, setEmail] = useState("nguyenvana@example.com");
-  const [phone, setPhone] = useState("0912345678");
-  const [address, setAddress] = useState("Số 1, Đường ABC, Quận 1, TP.HCM");
-
-  // State to control edit mode
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const USER_API_URL = `${BACKEND_API_BASE_URL}/auth`;
+
+  // Gọi API để lấy dữ liệu khi component mount
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const response = await fetch(USER_API_URL); // Thay bằng URL API thực tế
+        const data = await response.json();
+        setName(data.name);
+        setEmail(data.email);
+        setPhone(data.phone);
+        setAddress(data.address);
+      } catch (error) {
+        Alert.alert("Lỗi", "Không thể tải thông tin cá nhân.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserData();
+  }, []);
 
   // Handle saving changes
   const handleSaveChanges = () => {
-    // Here you would typically send data to a backend API
     console.log("Saving changes:", { name, email, phone, address });
     Alert.alert("Thành công", "Thông tin cá nhân đã được lưu.");
-    setIsEditing(false); // Exit edit mode after saving
+    setIsEditing(false);
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Text>Đang tải...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>

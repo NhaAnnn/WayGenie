@@ -56,13 +56,18 @@ const coordinateRoutes = require("./routes/coordinates");
 const routeRoutes = require("./routes/routes");
 const authRoutes = require("./routes/auth");
 const aqiRoutes = require("./routes/aqis");
-// const findWay = require("./routes/findWay");
+const authRoutes = require("./routes/auth");
+const simulateRoutes = require("./routes/simulate");
+const findWay = require("./routes/findWay");
+
 const forgotPasswordRoutes = require("./routes/forgotPassword");
 app.use("/api/coordinates", coordinateRoutes);
 app.use("/api/routes", routeRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/aqis", aqiRoutes);
-// app.use("/api/findWay", findWay);
+app.use("/api/auth", authRoutes);
+app.use("/api/simulate", simulateRoutes);
+app.use("/api/find-way", findWay);
 app.use("/api/forgot", forgotPasswordRoutes);
 
 // API nhận file upload

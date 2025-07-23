@@ -1,105 +1,116 @@
-// context/AuthContext.js
 import React, { createContext, useContext, useState, useEffect } from "react";
 import * as SecureStore from "expo-secure-store";
-import AsyncStorage from "@react-native-async-storage/async-storage"; // Import AsyncStorage
-import { Platform } from "react-native"; // Import Platform
-import axios from "axios"; // Ensure axios is installed if you use it for real API calls
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform, Alert } from "react-native";
+import axios from "axios";
+import { BACKEND_API_BASE_URL } from "../secrets";
 
 const AuthContext = createContext(null);
 
 const TOKEN_KEY = "userToken";
-const ROLE_KEY = "userRole"; // Thêm key để lưu vai trò một cách riêng biệt
+const ROLE_KEY = "userRole";
 
 // Hàm lưu trữ an toàn (dựa vào nền tảng)
 const saveAuthData = async (token, role) => {
-  if (Platform.OS === "web") {
-    await AsyncStorage.setItem(TOKEN_KEY, token);
-    await AsyncStorage.setItem(ROLE_KEY, role);
-  } else {
-    // SecureStore lý tưởng cho các giá trị nhỏ, nhạy cảm
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
-    await SecureStore.setItemAsync(ROLE_KEY, role); // Lưu vai trò vào SecureStore
+  try {
+    if (Platform.OS === "web") {
+      await AsyncStorage.setItem(TOKEN_KEY, token);
+      await AsyncStorage.setItem(ROLE_KEY, role);
+      console.log("Saved auth data to AsyncStorage:", { token, role });
+    } else {
+      await SecureStore.setItemAsync(TOKEN_KEY, token);
+      await SecureStore.setItemAsync(ROLE_KEY, role);
+      console.log("Saved auth data to SecureStore:", { token, role });
+    }
+  } catch (error) {
+    console.error("Failed to save auth data:", error.message);
+    throw new Error("Không thể lưu dữ liệu xác thực.");
   }
 };
 
 // Hàm lấy token và vai trò an toàn (dựa vào nền tảng)
 const getAuthData = async () => {
-  let token = null;
-  let role = null;
-  if (Platform.OS === "web") {
-    token = await AsyncStorage.getItem(TOKEN_KEY);
-    role = await AsyncStorage.getItem(ROLE_KEY);
-  } else {
-    token = await SecureStore.getItemAsync(TOKEN_KEY);
-    role = await SecureStore.getItemAsync(ROLE_KEY); // Lấy vai trò từ SecureStore
+  try {
+    let token = null;
+    let role = null;
+    if (Platform.OS === "web") {
+      token = await AsyncStorage.getItem(TOKEN_KEY);
+      role = await AsyncStorage.getItem(ROLE_KEY);
+      console.log("Retrieved auth data from AsyncStorage:", { token, role });
+    } else {
+      token = await SecureStore.getItemAsync(TOKEN_KEY);
+      role = await SecureStore.getItemAsync(ROLE_KEY);
+      console.log("Retrieved auth data from SecureStore:", { token, role });
+    }
+    return { token, role };
+  } catch (error) {
+    console.error("Failed to retrieve auth data:", error.message);
+    return { token: null, role: null };
   }
-  return { token, role };
 };
 
 // Hàm xóa token và vai trò an toàn (dựa vào nền tảng)
 const deleteAuthData = async () => {
-  if (Platform.OS === "web") {
-    await AsyncStorage.removeItem(TOKEN_KEY);
-    await AsyncStorage.removeItem(ROLE_KEY);
-  } else {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.deleteItemAsync(ROLE_KEY);
+  try {
+    if (Platform.OS === "web") {
+      await AsyncStorage.removeItem(TOKEN_KEY);
+      await AsyncStorage.removeItem(ROLE_KEY);
+      console.log("Cleared auth data from AsyncStorage");
+    } else {
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+      await SecureStore.deleteItemAsync(ROLE_KEY);
+      console.log("Cleared auth data from SecureStore");
+    }
+  } catch (error) {
+    console.error("Failed to delete auth data:", error.message);
   }
 };
 
 export const AuthProvider = ({ children }) => {
   const [authToken, setAuthToken] = useState(null);
   const [userRole, setUserRole] = useState(null);
-  const [isLoading, setIsLoading] = useState(true); // Trạng thái tải ban đầu
-  const [error, setError] = useState(null); // Để lưu trữ lỗi đăng nhập
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // --- HARDCODED TEST ACCOUNTS (Chỉ dùng cho Phát triển) ---
-  const TEST_USERNAME_USER = "user";
-  const TEST_PASSWORD_USER = "123";
-  const TEST_USERNAME_ADMIN = "admin";
-  const TEST_PASSWORD_ADMIN = "123";
-  // --- END HARDCODED TEST ACCOUNTS ---
-
+  // Load token when component mounts
   useEffect(() => {
     const loadToken = async () => {
+      setIsLoading(true);
       try {
-        const { token, role } = await getAuthData(); // Sử dụng hàm getAuthData
+        const { token, role } = await getAuthData();
 
         if (token) {
-          // Xử lý token giả lập (dummy token)
-          if (token.startsWith("dummy.")) {
-            setAuthToken(token);
-            // Dựa vào logic của bạn, vai trò đã được lưu riêng biệt hoặc suy ra từ token
-            // Trong ví dụ này, chúng ta giả định role đã được lưu cùng với token
-            setUserRole(role);
-            console.log("Loaded dummy token. User role:", role);
-          } else {
-            // Xử lý JWT thật
-            const parts = token.split(".");
-            if (parts.length === 3) {
+          // Validate JWT format
+          const parts = token.split(".");
+          if (parts.length === 3) {
+            try {
               const payload = JSON.parse(atob(parts[1]));
               setAuthToken(token);
-              setUserRole(payload.role || "user"); // Ưu tiên vai trò từ payload JWT
+              setUserRole(role || payload.role || "user");
               axios.defaults.headers.common[
                 "Authorization"
               ] = `Bearer ${token}`;
-              console.log("Loaded real JWT. User role:", payload.role);
-            } else {
-              console.warn(
-                "Invalid JWT format loaded from storage. Clearing token."
+              console.log(
+                "Loaded JWT. User role:",
+                role || payload.role || "user"
               );
-              await deleteAuthData(); // Xóa token không hợp lệ
+            } catch (e) {
+              console.warn("Invalid JWT payload. Clearing token.");
+              await deleteAuthData();
               setAuthToken(null);
               setUserRole(null);
             }
+          } else {
+            console.warn("Invalid JWT format. Clearing token.");
+            await deleteAuthData();
+            setAuthToken(null);
+            setUserRole(null);
           }
+        } else {
+          console.log("No token found in storage.");
         }
       } catch (e) {
-        console.error(
-          "Failed to load auth data from storage. Clearing any invalid data.",
-          e
-        );
-        await deleteAuthData(); // Xóa bất kỳ dữ liệu lỗi nào
+        console.error("Failed to load auth data:", e.message);
         setAuthToken(null);
         setUserRole(null);
       } finally {
@@ -109,67 +120,47 @@ export const AuthProvider = ({ children }) => {
     loadToken();
   }, []);
 
-  const login = async (username, password) => {
+  const login = async (email, password) => {
     setIsLoading(true);
-    setError(null); // Xóa lỗi cũ
+    setError(null);
 
-    // --- LOGIC TEST ĐĂNG NHẬP (CHỈ DÙNG CHO PHÁT TRIỂN) ---
-    if (username === TEST_USERNAME_USER && password === TEST_PASSWORD_USER) {
-      console.log("Simulating login for testuser (user role)");
-      const dummyToken = `dummy.eyJpZCI6IjEyMyIsInVzZXJuYW1lIjoi${TEST_USERNAME_USER}Iiwicm9sZSI6InVzZXIifQ.signature`;
-      const dummyRole = "user";
-      await saveAuthData(dummyToken, dummyRole); // Lưu cả token và vai trò
-      setAuthToken(dummyToken);
-      setUserRole(dummyRole);
-      setIsLoading(false);
-      return { success: true };
-    } else if (
-      username === TEST_USERNAME_ADMIN &&
-      password === TEST_PASSWORD_ADMIN
-    ) {
-      console.log("Simulating login for adminuser (admin role)");
-      const dummyToken = `dummy.eyJpZCI6IjQ1NiIsInVzZXJuYW1lIjoi${TEST_USERNAME_ADMIN}Iiwicm9sZSI6ImFkbWluIn0.signature`;
-      const dummyRole = "admin";
-      await saveAuthData(dummyToken, dummyRole); // Lưu cả token và vai trò
-      setAuthToken(dummyToken);
-      setUserRole(dummyRole);
-      setIsLoading(false);
-      return { success: true };
-    }
-    // --- KẾT THÚC LOGIC TEST ĐĂNG NHẬP ---
-
-    // LOGIC ĐĂNG NHẬP THỰC TẾ (Nếu không phải tài khoản test)
     try {
-      const response = await axios.post(`${BASE_URL}/login`, {
-        username,
+      const response = await axios.post(`${BACKEND_API_BASE_URL}/auth/login`, {
+        email,
         password,
       });
-      const { token } = response.data; // Giả sử API trả về { token: "..." }
+
+      const { token, user } = response.data;
+
+      if (!token || !user) {
+        throw new Error(
+          "Invalid response from server: Missing token or user data."
+        );
+      }
 
       const parts = token.split(".");
       if (parts.length !== 3) {
         throw new Error("Invalid JWT format received from server.");
       }
-      const payload = JSON.parse(atob(parts[1])); // Giải mã payload JWT
-      const role = payload.role || "user"; // Lấy vai trò từ payload hoặc mặc định là 'user'
 
-      await saveAuthData(token, role); // Lưu token và vai trò thật
+      const role = user.role || "user";
+      await saveAuthData(token, role);
       setAuthToken(token);
       setUserRole(role);
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+      console.log("Login successful. Saved token and role:", { token, role });
+
       return { success: true };
     } catch (e) {
       console.error("Login failed:", e.response ? e.response.data : e.message);
       setAuthToken(null);
       setUserRole(null);
-      setError(
+      const errorMessage =
         e.response?.data?.message ||
-          "Đăng nhập thất bại. Vui lòng kiểm tra lại."
-      );
-      return {
-        success: false,
-        error: e.response?.data?.message || "Đăng nhập thất bại.",
-      };
+        "Đăng nhập thất bại. Vui lòng kiểm tra lại email và mật khẩu.";
+      setError(errorMessage);
+      Alert.alert("Lỗi Đăng Nhập", errorMessage);
+      return { success: false, error: errorMessage };
     } finally {
       setIsLoading(false);
     }
@@ -178,12 +169,14 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     setIsLoading(true);
     try {
-      await deleteAuthData(); // Sử dụng hàm deleteAuthData
+      await deleteAuthData();
       setAuthToken(null);
       setUserRole(null);
-      delete axios.defaults.headers.common["Authorization"]; // Xóa header Auth
+      delete axios.defaults.headers.common["Authorization"];
+      console.log("Logout successful.");
     } catch (e) {
-      console.error("Failed to delete auth token from storage.", e);
+      console.error("Failed to logout:", e.message);
+      Alert.alert("Lỗi", "Không thể đăng xuất. Vui lòng thử lại.");
     } finally {
       setIsLoading(false);
     }
@@ -201,7 +194,6 @@ export const AuthProvider = ({ children }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === null) {
-    // Kiểm tra null thay vì undefined
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;

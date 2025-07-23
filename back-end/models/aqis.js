@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 
 const aqisSchema = new mongoose.Schema(
   {
-    stationId: {
+    stationUid: {
       type: Number, // Example from image
       required: true,
       unique: true,
