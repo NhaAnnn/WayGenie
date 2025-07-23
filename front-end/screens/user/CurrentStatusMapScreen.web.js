@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,12 +13,16 @@ import {
   Keyboard,
   Dimensions,
   SafeAreaView,
+  Modal,
 } from "react-native";
 import axios from "axios";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import { transportModes } from "../../data/transportModes";
-import { MAPBOX_PUBLIC_ACCESS_TOKEN } from "../../secrets.js";
+import {
+  MAPBOX_PUBLIC_ACCESS_TOKEN,
+  BACKEND_API_BASE_URL,
+} from "../../secrets.js";
 import MapWrapper from "../../components/MapWrapper";
 
 export default function CurrentStatusMapScreen({ navigation }) {
@@ -43,17 +47,44 @@ export default function CurrentStatusMapScreen({ navigation }) {
   const [activeInput, setActiveInput] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [selectedAqiData, setSelectedAqiData] = useState(null);
+  const [aqiPopupVisible, setAqiPopupVisible] = useState(false);
+  const [coordinatesInfo, setCoordinatesInfo] = useState(null); // Thêm state cho thông tin tọa độ
 
   // State for data layers
   const [layersVisibility, setLayersVisibility] = useState({
     traffic: true,
-    airQuality: false,
-    incidents: true,
+    airQuality: true,
+    coordinates: true, // Thay đổi từ incidents thành coordinates để phù hợp với CoordinateManagement
   });
 
-  const [trafficData, setTrafficData] = useState(null);
-  const [airQualityData, setAirQualityData] = useState(null);
-  const [incidentData, setIncidentData] = useState(null);
+  // Backend data state
+  const [allCoordinates, setAllCoordinates] = useState([]);
+  const [allRoutes, setAllRoutes] = useState([]);
+  const [rawAirQualityData, setRawAirQualityData] = useState([]);
+  const [isBackendGraphDataLoading, setIsBackendGraphDataLoading] =
+    useState(true);
+  const [isError, setIsError] = useState(false);
+
+  // Data for map layers
+  const [trafficData, setTrafficData] = useState({
+    type: "FeatureCollection",
+    features: [],
+  });
+  const [airQualityData, setAirQualityData] = useState({
+    type: "FeatureCollection",
+    features: [],
+  });
+  const [coordinatesData, setCoordinatesData] = useState({
+    // Thay đổi từ incidentData thành coordinatesData
+    type: "FeatureCollection",
+    features: [],
+  });
+
+  // API endpoints
+  const COORDINATES_API_URL = `${BACKEND_API_BASE_URL}/coordinates`;
+  const ROUTES_API_URL = `${BACKEND_API_BASE_URL}/routes`;
+  const AIR_QUALITY_API_URL = `${BACKEND_API_BASE_URL}/aqis`;
 
   const debounceTimeout = useRef(null);
 
@@ -65,82 +96,156 @@ export default function CurrentStatusMapScreen({ navigation }) {
     { id: "less_traffic", label: "Ít tắc đường", icon: "car" },
   ];
 
-  // Fetch realtime data for layers
-  const fetchRealtimeData = () => {
-    // Traffic data
+  // Fetch graph data from backend
+  const fetchGraphData = useCallback(async () => {
+    setIsBackendGraphDataLoading(true);
+    setIsError(false);
+
+    try {
+      const [coordsResponse, routesResponse, airQualityResponse] =
+        await Promise.allSettled([
+          fetch(COORDINATES_API_URL),
+          fetch(ROUTES_API_URL),
+          fetch(AIR_QUALITY_API_URL),
+        ]);
+
+      let errorOccurred = false;
+
+      if (coordsResponse.status === "fulfilled" && coordsResponse.value.ok) {
+        const coordsData = await coordsResponse.value.json();
+        setAllCoordinates(coordsData);
+      } else {
+        errorOccurred = true;
+        console.error("Error fetching coordinates");
+      }
+
+      if (routesResponse.status === "fulfilled" && routesResponse.value.ok) {
+        const routesData = await routesResponse.value.json();
+        setAllRoutes(routesData);
+      } else {
+        errorOccurred = true;
+        console.error("Error fetching routes");
+      }
+
+      if (
+        airQualityResponse.status === "fulfilled" &&
+        airQualityResponse.value.ok
+      ) {
+        const aqData = await airQualityResponse.value.json();
+        setRawAirQualityData(aqData);
+      } else {
+        errorOccurred = true;
+        console.error("Error fetching air quality data");
+      }
+
+      setIsError(errorOccurred);
+    } catch (error) {
+      console.error("General network error:", error);
+      setIsError(true);
+    } finally {
+      setIsBackendGraphDataLoading(false);
+    }
+  }, [COORDINATES_API_URL, ROUTES_API_URL, AIR_QUALITY_API_URL]);
+
+  // Process realtime data from backend
+  const processRealtimeData = useCallback(() => {
+    if (
+      allCoordinates.length === 0 ||
+      allRoutes.length === 0 ||
+      rawAirQualityData.length === 0
+    )
+      return;
+
+    // Create coordinates map
+    const coordinatesMap = new Map();
+    allCoordinates.forEach((coord) => {
+      coordinatesMap.set(coord["NODE:NO"], coord);
+    });
+
+    // Process traffic data
+    const trafficFeatures = allRoutes.map((route) => {
+      const fromCoord = coordinatesMap.get(route.FROMNODENO);
+      const toCoord = coordinatesMap.get(route.TONODENO);
+
+      return {
+        type: "Feature",
+        properties: {
+          id: route.linkNo,
+          linkNo: route.linkNo ?? "N/A",
+          FROMNODENO: route.FROMNODENO ?? "N/A",
+          TONODENO: route.TONODENO ?? "N/A",
+          VC: route.VC ?? "N/A",
+          TSYSSET: route.TSYSSET ?? "N/A",
+          status:
+            route.VC <= 0.6
+              ? "smooth"
+              : route.VC <= 0.8
+              ? "moderate"
+              : "congested",
+        },
+        geometry: route.geometry || {
+          type: "LineString",
+          coordinates: [
+            fromCoord?.location?.coordinates || [0, 0],
+            toCoord?.location?.coordinates || [0, 0],
+          ],
+        },
+      };
+    });
+
     setTrafficData({
       type: "FeatureCollection",
-      features: [
-        {
-          type: "Feature",
-          properties: { status: "congested" },
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              [105.84, 21.02],
-              [105.85, 21.03],
-              [105.86, 21.04],
-            ],
-          },
-        },
-        {
-          type: "Feature",
-          properties: { status: "moderate" },
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              [105.82, 21.01],
-              [105.83, 21.0],
-            ],
-          },
-        },
-      ],
+      features: trafficFeatures,
     });
 
-    // Air quality data
+    // Process air quality data
+    const airQualityFeatures = rawAirQualityData.map((aqData, index) => {
+      const aqiValue = aqData.aqi || 0;
+      let status = "good";
+      if (aqiValue > 300) status = "very_unhealthy";
+      else if (aqiValue > 200) status = "hazardous";
+      else if (aqiValue > 150) status = "unhealthy";
+      else if (aqiValue > 100) status = "unhealthy_sensitive";
+      else if (aqiValue > 50) status = "moderate";
+
+      return {
+        type: "Feature",
+        properties: {
+          stationId: aqData.stationUid || `station-${index}`,
+          stationName: aqData.stationName || `Trạm ${index}`,
+          aqi: aqiValue,
+          pm25: aqData.pm25 || 0,
+          co: aqData.co || 0,
+          no2: aqData.no2 || 0,
+          so2: aqData.so2 || 0,
+          o3: aqData.o3 || 0,
+          status: status,
+          timestamp: aqData.time || "Không rõ",
+        },
+        geometry: aqData.location || { type: "Point", coordinates: [0, 0] },
+      };
+    });
+
     setAirQualityData({
       type: "FeatureCollection",
-      features: [
-        {
-          type: "Feature",
-          properties: { pm25: 60, status: "unhealthy" },
-          geometry: { type: "Point", coordinates: [105.83, 21.03] },
-        },
-        {
-          type: "Feature",
-          properties: { pm25: 25, status: "moderate" },
-          geometry: { type: "Point", coordinates: [105.85, 21.01] },
-        },
-      ],
+      features: airQualityFeatures,
     });
 
-    // Incident data
-    setIncidentData({
+    // Process coordinates data (thay thế cho incidentData)
+    const coordinateFeatures = allCoordinates.map((coord) => ({
+      type: "Feature",
+      properties: {
+        node_id: coord.node_id,
+        nodeName: coord.node_name || `Node ${coord.node_id || "N/A"}`,
+      },
+      geometry: coord.location || { type: "Point", coordinates: [0, 0] },
+    }));
+
+    setCoordinatesData({
       type: "FeatureCollection",
-      features: [
-        {
-          type: "Feature",
-          properties: {
-            type: "accident",
-            description: "Tai nạn",
-            severity: "high",
-            icon: "fire",
-          },
-          geometry: { type: "Point", coordinates: [105.845, 21.025] },
-        },
-        {
-          type: "Feature",
-          properties: {
-            type: "road_closure",
-            description: "Đóng đường",
-            severity: "medium",
-            icon: "roadblock",
-          },
-          geometry: { type: "Point", coordinates: [105.835, 21.015] },
-        },
-      ],
+      features: coordinateFeatures,
     });
-  };
+  }, [allCoordinates, allRoutes, rawAirQualityData]);
 
   // Handle screen resize
   useEffect(() => {
@@ -165,19 +270,26 @@ export default function CurrentStatusMapScreen({ navigation }) {
     };
   }, []);
 
+  // Initial data fetch
+  useEffect(() => {
+    fetchGraphData();
+  }, [fetchGraphData]);
+
+  // Process data when loaded
+  useEffect(() => {
+    if (!isBackendGraphDataLoading && !isError) {
+      processRealtimeData();
+      const interval = setInterval(processRealtimeData, 30000); // Update every 30s
+      return () => clearInterval(interval);
+    }
+  }, [isBackendGraphDataLoading, isError, processRealtimeData]);
+
   // Fetch route when mode or preference changes
   useEffect(() => {
     if (startCoords && endCoords) {
       fetchRoute();
     }
-  }, [mode, routePreference]);
-
-  // Initialize realtime data
-  useEffect(() => {
-    fetchRealtimeData();
-    const interval = setInterval(fetchRealtimeData, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  }, [mode, routePreference, startCoords, endCoords]);
 
   // Toggle layer visibility
   const toggleLayer = (layerName) => {
@@ -185,6 +297,16 @@ export default function CurrentStatusMapScreen({ navigation }) {
       ...prevState,
       [layerName]: !prevState[layerName],
     }));
+
+    // Close AQI popup when air quality layer is turned off
+    if (layerName === "airQuality" && aqiPopupVisible) {
+      setAqiPopupVisible(false);
+      setSelectedAqiData(null);
+    }
+    // Close coordinates info when coordinates layer is turned off
+    if (layerName === "coordinates" && coordinatesInfo) {
+      setCoordinatesInfo(null);
+    }
   };
 
   // Handle address autocomplete
@@ -393,21 +515,96 @@ export default function CurrentStatusMapScreen({ navigation }) {
     };
   };
 
+  // Handle coordinate marker press
+  const handleCoordinateMarkerPress = useCallback(
+    (feature) => {
+      if (layersVisibility.coordinates) {
+        setCoordinatesInfo({
+          node_id: feature.properties.node_id,
+          nodeName: feature.properties.nodeName,
+          coordinates: feature.geometry.coordinates,
+        });
+      }
+    },
+    [layersVisibility.coordinates]
+  );
+
+  // Close coordinates info
+  const closeCoordinatesInfo = () => {
+    setCoordinatesInfo(null);
+  };
+
+  // Handle air quality marker press
+  const handleAirQualityMarkerPress = useCallback(
+    (feature) => {
+      if (layersVisibility.airQuality) {
+        setSelectedAqiData({
+          ...feature.properties,
+          coordinates: feature.geometry.coordinates,
+        });
+        setAqiPopupVisible(true);
+      }
+    },
+    [layersVisibility.airQuality]
+  );
+
+  // Close AQI popup
+  const closeAqiPopup = () => {
+    setAqiPopupVisible(false);
+    setSelectedAqiData(null);
+  };
+
+  // Get AQI status and color
+  const getAqiStatus = (aqi) => {
+    if (!aqi || isNaN(aqi))
+      return { color: "#888", description: "Không có dữ liệu" };
+
+    if (aqi >= 300) return { color: "#7e0023", description: "Nguy hiểm" };
+    if (aqi >= 200) return { color: "#8b008b", description: "Rất không tốt" };
+    if (aqi >= 150) return { color: "#ff0000", description: "Không tốt" };
+    if (aqi >= 100)
+      return { color: "#ff8c00", description: "Không tốt cho nhóm nhạy cảm" };
+    if (aqi >= 50) return { color: "#ffff00", description: "Trung bình" };
+    return { color: "#008000", description: "Tốt" };
+  };
+
+  // Combined loading state
+  const isLoading =
+    isBackendGraphDataLoading ||
+    !trafficData.features.length ||
+    !airQualityData.features.length ||
+    !coordinatesData.features.length;
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.mapContainer}>
+        {isLoading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#007BFF" />
+            <Text style={styles.loadingText}>
+              {isError ? "Lỗi tải dữ liệu" : "Đang tải dữ liệu..."}
+            </Text>
+          </View>
+        )}
+
         <MapWrapper
           startCoords={startCoords}
           endCoords={endCoords}
           routes={routes}
           mapboxAccessToken={MAPBOX_PUBLIC_ACCESS_TOKEN}
           selectedRouteIndex={selectedRouteIndex}
-          initialCenter={[105.8342, 21.0278]} // Hà Nội
+          initialCenter={[105.8342, 21.0278]}
           initialZoom={12}
           layersVisibility={layersVisibility}
           trafficData={trafficData}
+          coordinatesData={coordinatesData} // Thay đổi từ incidentData thành coordinatesData
           airQualityData={airQualityData}
-          incidentData={incidentData}
+          onCoordinateMarkerPress={handleCoordinateMarkerPress} // Thêm prop xử lý click tọa độ
+          coordinatesInfo={coordinatesInfo} // Thêm prop thông tin tọa độ
+          onCloseCoordinatesPanel={closeCoordinatesInfo} // Thêm prop đóng panel tọa độ
+          onAirQualityMarkerPress={handleAirQualityMarkerPress}
+          selectedAqiData={selectedAqiData}
+          onCloseAqiPanel={closeAqiPopup}
         />
       </View>
 
@@ -430,7 +627,7 @@ export default function CurrentStatusMapScreen({ navigation }) {
                     ? "Giao thông"
                     : key === "airQuality"
                     ? "Không khí"
-                    : "Sự cố"}
+                    : "Tọa độ"}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -950,5 +1147,66 @@ const styles = StyleSheet.create({
     color: "black",
     fontWeight: "600",
     fontSize: 13,
+  },
+  loadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#333",
+    textAlign: "center",
+    marginHorizontal: 20,
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: "#007BFF",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  aqiPopup: {
+    position: "absolute",
+    bottom: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    borderRadius: 10,
+    padding: 15,
+    zIndex: 100,
+  },
+  closeButton: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    padding: 5,
+  },
+  aqiTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 5,
+  },
+  aqiValue: {
+    color: "#fff",
+    fontSize: 16,
+    marginBottom: 3,
+  },
+  aqiDetail: {
+    color: "#fff",
+    fontSize: 14,
   },
 });

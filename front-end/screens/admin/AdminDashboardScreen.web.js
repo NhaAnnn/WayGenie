@@ -1,46 +1,133 @@
-// screens/AdminDashboardScreen.js
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Alert,
   Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../context/AuthContext";
+import axios from "axios";
+import { toast } from "react-toastify";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import { BACKEND_API_BASE_URL } from "../../secrets.js";
+
+const COORDINATES_API_URL = `${BACKEND_API_BASE_URL}/coordinates`; // Endpoint cho POIs
+const ROUTES_API_URL = `${BACKEND_API_BASE_URL}/routes`; // Endpoint cho tuyến đường
+const AQIS_API_URL = `${BACKEND_API_BASE_URL}/aqis`; // Endpoint cho trạm quan trắc
+const AUTH_API_URL = `${BACKEND_API_BASE_URL}/auth`; // Endpoint cho người dùng
 
 const AdminDashboardScreen = () => {
   const navigation = useNavigation();
-  const { logout } = useAuth();
+  const { logout, authToken, userRole } = useAuth();
+
+  const [stats, setStats] = useState({
+    routes: 0,
+    pois: 0,
+    stations: 0,
+    users: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!authToken) {
+        toast.error("Vui lòng đăng nhập để xem thống kê.", {
+          position: "top-right",
+          autoClose: 3000,
+        });
+        navigation.navigate("Login");
+        return;
+      }
+
+      if (userRole !== "admin") {
+        toast.error("Chỉ admin mới có quyền truy cập dashboard.", {
+          position: "top-right",
+          autoClose: 3000,
+        });
+        navigation.navigate("Home");
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const [routesResponse, poisResponse, stationsResponse, usersResponse] =
+          await Promise.all([
+            axios.get(ROUTES_API_URL, {
+              headers: { Authorization: `Bearer ${authToken}` },
+            }),
+            axios.get(COORDINATES_API_URL, {
+              headers: { Authorization: `Bearer ${authToken}` },
+            }),
+            axios.get(AQIS_API_URL, {
+              headers: { Authorization: `Bearer ${authToken}` },
+            }),
+            axios.get(AUTH_API_URL, {
+              headers: { Authorization: `Bearer ${authToken}` },
+            }),
+          ]);
+
+        console.log("Routes Response:", routesResponse.data);
+        console.log("POIs Response:", poisResponse.data);
+        console.log("Stations Response:", stationsResponse.data);
+        console.log("Users Response:", usersResponse.data);
+
+        setStats({
+          routes: routesResponse.data.length || routesResponse.data.total || 0,
+          pois: poisResponse.data.length || poisResponse.data.total || 0,
+          stations:
+            stationsResponse.data.length || stationsResponse.data.total || 0,
+          users: usersResponse.data.length || usersResponse.data.total || 0,
+        });
+      } catch (error) {
+        console.error("Error fetching stats:", error.response?.data || error);
+        toast.error(
+          error.response?.data?.message || "Lỗi khi lấy dữ liệu thống kê.",
+          {
+            position: "top-right",
+            autoClose: 3000,
+          }
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [authToken, userRole, navigation]);
 
   const navigateToScreen = (screenName) => {
-    navigation.navigate(screenName);
+    if (screenName === "") {
+      toast.info("Tính năng Báo cáo thống kê sẽ sớm được ra mắt!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+    } else {
+      navigation.navigate(screenName);
+    }
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      "Xác nhận đăng xuất",
-      "Bạn có chắc chắn muốn đăng xuất khỏi ứng dụng?",
-      [
-        {
-          text: "Hủy",
-          style: "cancel",
-        },
-        {
-          text: "Đăng xuất",
-          onPress: () => logout(),
-          style: "destructive",
-        },
-      ],
-      { cancelable: true }
-    );
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast.success("Đăng xuất thành công!", {
+        position: "top-right",
+        autoClose: 2000,
+      });
+      navigation.navigate("Login");
+    } catch (error) {
+      toast.error("Không thể đăng xuất. Vui lòng thử lại.", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      console.error("Logout error:", error);
+    }
   };
 
-  // Dashboard items
   const dashboardItems = [
     {
       icon: "key-outline",
@@ -49,54 +136,46 @@ const AdminDashboardScreen = () => {
     },
     {
       icon: "git-branch-outline",
+      title: "Quản lý Tuyến đường",
+      screen: "RouteManagement",
+    },
+    {
+      icon: "map-outline",
+      title: "Quản lý Tọa độ",
+      screen: "CoordinateManagement",
+    },
+    {
+      icon: "cellular-outline",
+      title: "Quản lý Trạm quan trắc",
+      screen: "StationManagement",
+    },
+    {
+      icon: "git-branch-outline",
       title: "Giao thông giả lập",
       screen: "SimulatedTraffic",
     },
     {
-      icon: "settings-outline",
-      title: "Quản lý Thông báo",
-      screen: "AdminFeatures",
-    },
-    {
-      icon: "server-outline",
-      title: "Cấu hình bến xe bus",
-      screen: "DataSourceConfig",
+      icon: "cloud-upload",
+      title: "Thêm tọa độ và tuyến đường từ file",
+      screen: "UploadManagement",
     },
     {
       icon: "bar-chart-outline",
-      title: "Phân tích và Báo cáo",
-      action: () =>
-        Alert.alert(
-          "Tính năng sắp ra mắt",
-          "Tính năng phân tích và báo cáo đang được phát triển."
-        ),
-    },
-
-    {
-      icon: "location-outline",
-      title: "Quản lý POI",
-      action: () =>
-        Alert.alert(
-          "Tính năng sắp ra mắt",
-          "Tính năng quản lý POI đang được phát triển."
-        ),
+      title: "Báo cáo thống kê",
+      screen: "",
     },
   ];
 
   return (
     <View style={styles.webContainer}>
-      {/* Sidebar */}
       <View style={styles.sidebar}>
         <Text style={styles.sidebarTitle}>Bảng điều khiển</Text>
-
         <View style={styles.sidebarMenu}>
           {dashboardItems.map((item, index) => (
             <TouchableOpacity
               key={index}
               style={styles.menuItem}
-              onPress={
-                item.screen ? () => navigateToScreen(item.screen) : item.action
-              }
+              onPress={() => navigateToScreen(item.screen)}
             >
               <Ionicons name={item.icon} size={20} color="#007BFF" />
               <Text style={styles.menuItemText}>{item.title}</Text>
@@ -104,10 +183,7 @@ const AdminDashboardScreen = () => {
           ))}
         </View>
       </View>
-
-      {/* Main Content */}
       <View style={styles.mainContent}>
-        {/* Header with logout button in top right */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Tổng quan hệ thống</Text>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -117,43 +193,85 @@ const AdminDashboardScreen = () => {
         </View>
 
         <ScrollView style={styles.contentScroll}>
-          {/* Stats Cards */}
           <View style={styles.statsContainer}>
             <View style={styles.statCard}>
               <Ionicons name="people-outline" size={30} color="#007BFF" />
-              <Text style={styles.statValue}>1,024</Text>
+              <Text style={styles.statValue}>
+                {loading ? "Đang tải..." : stats.users}
+              </Text>
               <Text style={styles.statLabel}>Người dùng</Text>
             </View>
-
+            <View style={styles.statCard}>
+              <Ionicons name="git-branch-outline" size={30} color="#007BFF" />
+              <Text style={styles.statValue}>
+                {loading ? "Đang tải..." : stats.routes}
+              </Text>
+              <Text style={styles.statLabel}>Tuyến đường</Text>
+            </View>
             <View style={styles.statCard}>
               <Ionicons name="location-outline" size={30} color="#007BFF" />
-              <Text style={styles.statValue}>5,678</Text>
-              <Text style={styles.statLabel}>Địa điểm POI</Text>
+              <Text style={styles.statValue}>
+                {loading ? "Đang tải..." : stats.pois}
+              </Text>
+              <Text style={styles.statLabel}>Tọa độ điểm</Text>
             </View>
-
             <View style={styles.statCard}>
-              <Ionicons name="analytics-outline" size={30} color="#007BFF" />
-              <Text style={styles.statValue}>12,345</Text>
-              <Text style={styles.statLabel}>Yêu cầu hôm nay</Text>
+              <Ionicons name="cellular-outline" size={30} color="#007BFF" />
+              <Text style={styles.statValue}>
+                {loading ? "Đang tải..." : stats.stations}
+              </Text>
+              <Text style={styles.statLabel}>Trạm quan trắc</Text>
             </View>
           </View>
 
-          {/* Recent Activity */}
-          <View style={styles.section}>
+          {/* <View style={styles.section}>
             <Text style={styles.sectionTitle}>Hoạt động gần đây</Text>
             <View style={styles.activityList}>
-              {[1, 2, 3, 4, 5].map((item) => (
-                <View key={item} style={styles.activityItem}>
-                  <Text style={styles.activityText}>
-                    Cập nhật cấu hình định tuyến #{item}
-                  </Text>
-                  <Text style={styles.activityTime}>2 giờ trước</Text>
-                </View>
-              ))}
+              <View style={styles.activityItem}>
+                <Text style={styles.activityText}>
+                  Thêm tuyến đường mới #47 (Đường Nguyễn Văn Linh)
+                </Text>
+                <Text style={styles.activityTime}>30 phút trước</Text>
+              </View>
+              <View style={styles.activityItem}>
+                <Text style={styles.activityText}>
+                  Cập nhật tọa độ trạm quan trắc Q.7
+                </Text>
+                <Text style={styles.activityTime}>2 giờ trước</Text>
+              </View>
+              <View style={styles.activityItem}>
+                <Text style={styles.activityText}>
+                  Thêm 3 trạm quan trắc mới khu vực trung tâm
+                </Text>
+                <Text style={styles.activityTime}>5 giờ trước</Text>
+              </View>
+              <View style={styles.activityItem}>
+                <Text style={styles.activityText}>
+                  Điều chỉnh lộ trình tuyến đường số 12
+                </Text>
+                <Text style={styles.activityTime}>1 ngày trước</Text>
+              </View>
+              <View style={styles.activityItem}>
+                <Text style={styles.activityText}>
+                  Cập nhật dữ liệu giao thông từ trạm quan trắc Q.1
+                </Text>
+                <Text style={styles.activityTime}>1 ngày trước</Text>
+              </View>
             </View>
-          </View>
+          </View> */}
         </ScrollView>
       </View>
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
     </View>
   );
 };
@@ -236,14 +354,15 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
+    flexWrap: "wrap",
     marginBottom: 30,
   },
   statCard: {
-    flex: 1,
+    width: "48%",
     backgroundColor: "#fff",
     borderRadius: 10,
     padding: 20,
-    marginRight: 15,
+    marginBottom: 15,
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -291,6 +410,8 @@ const styles = StyleSheet.create({
   },
   activityText: {
     color: "#555",
+    flex: 1,
+    marginRight: 10,
   },
   activityTime: {
     color: "#999",

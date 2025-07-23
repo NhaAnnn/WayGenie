@@ -8,12 +8,18 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
-  Alert,
 } from "react-native";
 import { MaterialIcons, AntDesign } from "@expo/vector-icons";
+import axios from "axios";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import { BACKEND_API_BASE_URL } from "../../secrets";
+import { useAuth } from "../../context/AuthContext";
 
-const ViewGmailAccounts = ({ navigation }) => {
-  // State management
+const AUTH_API_URL = `${BACKEND_API_BASE_URL}/auth`;
+
+const UserManagementScreen = ({ navigation }) => {
+  const { authToken, userRole, userId, isLoading: authLoading } = useAuth();
   const [gmailAccounts, setGmailAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -23,71 +29,184 @@ const ViewGmailAccounts = ({ navigation }) => {
     key: "email",
     direction: "asc",
   });
+  const [isRoleModalVisible, setIsRoleModalVisible] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState(null);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [accountToDelete, setAccountToDelete] = useState(null);
 
-  // Mock data - Replace with actual API call
   useEffect(() => {
     const fetchData = async () => {
+      if (authLoading) return;
+      if (!authToken) {
+        toast.error("Vui lòng đăng nhập để xem danh sách người dùng");
+        setLoading(false);
+        navigation.navigate("Login");
+        return;
+      }
+      if (userRole !== "admin") {
+        toast.error("Chỉ admin mới có quyền xem danh sách người dùng");
+        setLoading(false);
+        navigation.navigate("Home");
+        return;
+      }
+
       try {
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        setLoading(true);
+        console.log("Fetching users from:", AUTH_API_URL);
+        console.log("Using token:", authToken);
+        console.log("User role:", userRole);
 
-        const mockData = [
-          {
-            id: 1,
-            email: "admin@gmail.com",
-            status: "Active",
-            created: "2023-01-15",
-            lastLogin: "2023-06-01",
-          },
-          {
-            id: 2,
-            email: "user1@gmail.com",
-            status: "Active",
-            created: "2023-02-20",
-            lastLogin: "2023-06-10",
-          },
-          {
-            id: 3,
-            email: "user2@gmail.com",
-            status: "Inactive",
-            created: "2023-03-10",
-            lastLogin: "2023-05-15",
-          },
-          {
-            id: 4,
-            email: "support@gmail.com",
-            status: "Active",
-            created: "2023-04-05",
-            lastLogin: "2023-06-05",
-          },
-          {
-            id: 5,
-            email: "test@gmail.com",
-            status: "Suspended",
-            created: "2023-05-12",
-            lastLogin: "2023-05-20",
-          },
-        ];
+        const response = await axios.get(AUTH_API_URL);
+        console.log("API Response:", response.data);
 
-        setGmailAccounts(mockData);
+        const formattedData = response.data.map((user) => ({
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          status: user.role === "admin" ? "Admin" : "User",
+          role: user.role,
+          created: new Date(user.createdAt).toISOString().split("T")[0],
+        }));
+
+        setGmailAccounts(formattedData);
       } catch (error) {
-        Alert.alert("Error", "Failed to fetch Gmail accounts");
+        console.error(
+          "Error fetching users:",
+          error.response?.data || error.message
+        );
+        toast.error(
+          error.response?.data?.message ||
+            "Không thể lấy danh sách người dùng. Vui lòng thử lại."
+        );
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, []);
+  }, [authToken, userRole, authLoading, navigation]);
 
-  // Filter accounts based on search query
+  const openRoleModal = (accountId) => {
+    if (userRole !== "admin") {
+      toast.error("Chỉ admin mới có quyền thay đổi vai trò");
+      return;
+    }
+    setSelectedAccountId(accountId);
+    setIsRoleModalVisible(true);
+  };
+
+  const handleRoleChange = async (newRole) => {
+    if (!authToken || userRole !== "admin") {
+      toast.error("Chỉ admin mới có quyền thay đổi vai trò");
+      setIsRoleModalVisible(false);
+      return;
+    }
+
+    try {
+      console.log(`Updating role for user ${selectedAccountId} to ${newRole}`);
+      const response = await axios.patch(
+        `${AUTH_API_URL}/${selectedAccountId}/role`,
+        {
+          role: newRole,
+        }
+      );
+      console.log("Update role response:", response.data);
+
+      setGmailAccounts(
+        gmailAccounts.map((account) =>
+          account.id === selectedAccountId
+            ? {
+                ...account,
+                role: newRole,
+                status: newRole === "admin" ? "Admin" : "User",
+              }
+            : account
+        )
+      );
+      toast.success("Cập nhật vai trò thành công");
+    } catch (error) {
+      console.error(
+        "Error updating role:",
+        error.response?.data || error.message
+      );
+      toast.error(
+        error.response?.data?.message || "Không thể cập nhật vai trò"
+      );
+    } finally {
+      setIsRoleModalVisible(false);
+      setSelectedAccountId(null);
+    }
+  };
+
+  const handleDelete = (account) => {
+    if (!authToken) {
+      toast.error("Vui lòng đăng nhập để xóa tài khoản");
+      navigation.navigate("Login");
+      return;
+    }
+    if (userRole !== "admin") {
+      toast.error("Chỉ admin mới có quyền xóa tài khoản");
+      navigation.navigate("Home");
+      return;
+    }
+
+    if (account.id === userId) {
+      toast.error("Không thể tự xóa tài khoản admin");
+      return;
+    }
+
+    setAccountToDelete(account);
+    setIsDeleteModalVisible(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!accountToDelete) return;
+
+    try {
+      console.log(
+        "Authorization header:",
+        axios.defaults.headers.common["Authorization"]
+      );
+      console.log(
+        "DELETE request URL:",
+        `${AUTH_API_URL}/${accountToDelete.id}`
+      );
+      console.log("Deleting user with ID:", accountToDelete.id);
+
+      const response = await axios.delete(
+        `${AUTH_API_URL}/${accountToDelete.id}`
+      );
+      console.log("Delete response:", response.data);
+
+      setGmailAccounts(
+        gmailAccounts.filter((account) => account.id !== accountToDelete.id)
+      );
+      toast.success("Xóa tài khoản thành công");
+    } catch (error) {
+      console.error("Error deleting user:", {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+      });
+      toast.error(error.response?.data?.message || "Không thể xóa tài khoản");
+    } finally {
+      setIsDeleteModalVisible(false);
+      setAccountToDelete(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setIsDeleteModalVisible(false);
+    setAccountToDelete(null);
+  };
+
   const filteredAccounts = gmailAccounts.filter(
     (account) =>
+      account.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
       account.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       account.status.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Sort accounts
   const sortedAccounts = [...filteredAccounts].sort((a, b) => {
     if (a[sortConfig.key] < b[sortConfig.key]) {
       return sortConfig.direction === "asc" ? -1 : 1;
@@ -98,7 +217,6 @@ const ViewGmailAccounts = ({ navigation }) => {
     return 0;
   });
 
-  // Handle sort request
   const requestSort = (key) => {
     let direction = "asc";
     if (sortConfig.key === key && sortConfig.direction === "asc") {
@@ -107,80 +225,81 @@ const ViewGmailAccounts = ({ navigation }) => {
     setSortConfig({ key, direction });
   };
 
-  // Get status color
   const getStatusColor = (status) => {
     switch (status) {
-      case "Active":
+      case "Admin":
         return "#4CAF50";
-      case "Inactive":
+      case "User":
         return "#FFC107";
-      case "Suspended":
-        return "#F44336";
       default:
         return "#9E9E9E";
     }
   };
 
-  // Show account details modal
   const showAccountDetails = (account) => {
     setSelectedAccount(account);
     setIsModalVisible(true);
   };
 
-  // Handle delete account
-  const handleDelete = (id) => {
-    Alert.alert(
-      "Confirm Delete",
-      "Are you sure you want to delete this account?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            setGmailAccounts(
-              gmailAccounts.filter((account) => account.id !== id)
-            );
-            Alert.alert("Success", "Account deleted successfully");
-          },
-        },
-      ]
-    );
-  };
-
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#2196F3" />
-        <Text style={styles.loadingText}>Loading Gmail accounts...</Text>
+        <Text style={styles.loadingText}>Đang tải danh sách tài khoản...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        closeOnClick
+        pauseOnHover
+      />
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <AntDesign name="arrowleft" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.title}>Gmail Accounts Management</Text>
-        <View style={{ width: 24 }} /> {/* For alignment */}
+        <Text style={styles.title}>Quản Lý Tài Khoản</Text>
+        <View style={{ width: 24 }} />
       </View>
 
-      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <MaterialIcons name="search" size={20} color="#999" />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search accounts..."
+          placeholder="Tìm kiếm tài khoản..."
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
       </View>
 
-      {/* Table Header */}
       <View style={styles.tableHeader}>
+        <View style={[styles.headerCell, { flex: 1 }]}>
+          <Text style={styles.headerText}>STT</Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.headerCell, { flex: 2 }]}
+          onPress={() => requestSort("username")}
+        >
+          <Text style={styles.headerText}>Username</Text>
+          {sortConfig.key === "username" && (
+            <MaterialIcons
+              name={
+                sortConfig.direction === "asc"
+                  ? "arrow-drop-up"
+                  : "arrow-drop-down"
+              }
+              size={20}
+              color="#fff"
+            />
+          )}
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.headerCell, { flex: 3 }]}
           onPress={() => requestSort("email")}
@@ -194,16 +313,16 @@ const ViewGmailAccounts = ({ navigation }) => {
                   : "arrow-drop-down"
               }
               size={20}
-              color="#333"
+              color="#fff"
             />
           )}
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.headerCell}
+          style={[styles.headerCell, { flex: 1.5 }]}
           onPress={() => requestSort("status")}
         >
-          <Text style={styles.headerText}>Status</Text>
+          <Text style={styles.headerText}>Vai trò</Text>
           {sortConfig.key === "status" && (
             <MaterialIcons
               name={
@@ -212,17 +331,17 @@ const ViewGmailAccounts = ({ navigation }) => {
                   : "arrow-drop-down"
               }
               size={20}
-              color="#333"
+              color="#fff"
             />
           )}
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.headerCell}
-          onPress={() => requestSort("lastLogin")}
+          style={[styles.headerCell, { flex: 1.5 }]}
+          onPress={() => requestSort("created")}
         >
-          <Text style={styles.headerText}>Last Login</Text>
-          {sortConfig.key === "lastLogin" && (
+          <Text style={styles.headerText}>Ngày tạo</Text>
+          {sortConfig.key === "created" && (
             <MaterialIcons
               name={
                 sortConfig.direction === "asc"
@@ -230,21 +349,36 @@ const ViewGmailAccounts = ({ navigation }) => {
                   : "arrow-drop-down"
               }
               size={20}
-              color="#333"
+              color="#fff"
             />
           )}
         </TouchableOpacity>
 
-        <View style={[styles.headerCell, { alignItems: "center" }]}>
-          <Text style={styles.headerText}>Actions</Text>
+        <View style={[styles.headerCell, { flex: 1, alignItems: "center" }]}>
+          <Text style={styles.headerText}>Hành động</Text>
         </View>
       </View>
 
-      {/* Table Content */}
       <ScrollView style={styles.tableContent}>
         {sortedAccounts.length > 0 ? (
-          sortedAccounts.map((account) => (
+          sortedAccounts.map((account, index) => (
             <View key={account.id} style={styles.tableRow}>
+              <View style={[styles.tableCell, { flex: 1 }]}>
+                <Text style={styles.cellText}>{index + 1}</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.tableCell, { flex: 2 }]}
+                onPress={() => showAccountDetails(account)}
+              >
+                <Text
+                  style={styles.cellText}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {account.username}
+                </Text>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 style={[styles.tableCell, { flex: 3 }]}
                 onPress={() => showAccountDetails(account)}
@@ -258,34 +392,43 @@ const ViewGmailAccounts = ({ navigation }) => {
                 </Text>
               </TouchableOpacity>
 
-              <View style={styles.tableCell}>
-                <View style={styles.statusContainer}>
-                  <View
-                    style={[
-                      styles.statusIndicator,
-                      { backgroundColor: getStatusColor(account.status) },
-                    ]}
-                  />
-                  <Text style={styles.cellText}>{account.status}</Text>
-                </View>
-              </View>
-
-              <View style={styles.tableCell}>
-                <Text style={styles.cellText}>{account.lastLogin}</Text>
-              </View>
-
-              <View style={[styles.tableCell, styles.actionsCell]}>
+              <View style={[styles.tableCell, { flex: 1.5 }]}>
                 <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() =>
-                    navigation.navigate("EditGmailAccount", { account })
-                  }
+                  style={styles.selectBox}
+                  onPress={() => openRoleModal(account.id)}
+                  disabled={userRole !== "admin"}
                 >
-                  <MaterialIcons name="edit" size={20} color="#2196F3" />
+                  <View style={styles.statusContainer}>
+                    <View
+                      style={[
+                        styles.statusIndicator,
+                        { backgroundColor: getStatusColor(account.status) },
+                      ]}
+                    />
+                    <Text style={styles.selectBoxText}>{account.status}</Text>
+                  </View>
+                  <MaterialIcons
+                    name="arrow-drop-down"
+                    size={16}
+                    color="#555"
+                  />
                 </TouchableOpacity>
+              </View>
+
+              <View style={[styles.tableCell, { flex: 1.5 }]}>
+                <Text style={styles.cellText}>{account.created}</Text>
+              </View>
+
+              <View
+                style={[
+                  styles.tableCell,
+                  styles.actionsCell,
+                  { flex: 1, justifyContent: "center", alignItems: "center" },
+                ]}
+              >
                 <TouchableOpacity
                   style={styles.actionButton}
-                  onPress={() => handleDelete(account.id)}
+                  onPress={() => handleDelete(account)}
                 >
                   <MaterialIcons name="delete" size={20} color="#F44336" />
                 </TouchableOpacity>
@@ -295,21 +438,41 @@ const ViewGmailAccounts = ({ navigation }) => {
         ) : (
           <View style={styles.emptyState}>
             <MaterialIcons name="email" size={50} color="#ddd" />
-            <Text style={styles.emptyText}>No Gmail accounts found</Text>
+            <Text style={styles.emptyText}>Không tìm thấy tài khoản Gmail</Text>
           </View>
         )}
       </ScrollView>
 
-      {/* Add Account Button */}
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => navigation.navigate("AddGmailAccount")}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={isRoleModalVisible}
+        onRequestClose={() => setIsRoleModalVisible(false)}
       >
-        <AntDesign name="plus" size={20} color="white" />
-        <Text style={styles.addButtonText}>Add New Account</Text>
-      </TouchableOpacity>
+        <View style={styles.roleModalContainer}>
+          <View style={styles.roleModalContent}>
+            <TouchableOpacity
+              style={styles.roleOption}
+              onPress={() => handleRoleChange("user")}
+            >
+              <Text style={styles.roleOptionText}>User</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.roleOption}
+              onPress={() => handleRoleChange("admin")}
+            >
+              <Text style={styles.roleOptionText}>Admin</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.roleCancelButton}
+              onPress={() => setIsRoleModalVisible(false)}
+            >
+              <Text style={styles.roleCancelText}>Hủy</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
-      {/* Account Details Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -319,14 +482,20 @@ const ViewGmailAccounts = ({ navigation }) => {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Account Details</Text>
+              <Text style={styles.modalTitle}>Chi tiết tài khoản</Text>
               <TouchableOpacity onPress={() => setIsModalVisible(false)}>
-                <AntDesign name="close" size={24} color="#333" />
+                {/* <AntDesign name="close" size={24} color="#333" /> */}
               </TouchableOpacity>
             </View>
 
             {selectedAccount && (
               <View style={styles.detailsContainer}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Username:</Text>
+                  <Text style={styles.detailValue}>
+                    {selectedAccount.username}
+                  </Text>
+                </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Email:</Text>
                   <Text style={styles.detailValue}>
@@ -334,7 +503,7 @@ const ViewGmailAccounts = ({ navigation }) => {
                   </Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Status:</Text>
+                  <Text style={styles.detailLabel}>Vai trò:</Text>
                   <View style={styles.statusContainer}>
                     <View
                       style={[
@@ -352,15 +521,9 @@ const ViewGmailAccounts = ({ navigation }) => {
                   </View>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Created:</Text>
+                  <Text style={styles.detailLabel}>Ngày tạo:</Text>
                   <Text style={styles.detailValue}>
                     {selectedAccount.created}
-                  </Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Last Login:</Text>
-                  <Text style={styles.detailValue}>
-                    {selectedAccount.lastLogin}
                   </Text>
                 </View>
               </View>
@@ -370,8 +533,47 @@ const ViewGmailAccounts = ({ navigation }) => {
               style={styles.modalButton}
               onPress={() => setIsModalVisible(false)}
             >
-              <Text style={styles.modalButtonText}>Close</Text>
+              <Text style={styles.modalButtonText}>Đóng</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="none"
+        transparent={true}
+        visible={isDeleteModalVisible}
+        onRequestClose={cancelDelete}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.deleteModalContent}>
+            <Text style={styles.deleteModalText}>
+              Bạn đang xóa tài khoản này
+            </Text>
+            {accountToDelete && (
+              <View style={styles.deleteInfoContainer}>
+                <Text style={styles.deleteInfoText}>
+                  Username: {accountToDelete.username}
+                </Text>
+                <Text style={styles.deleteInfoText}>
+                  Email: {accountToDelete.email}
+                </Text>
+              </View>
+            )}
+            <View style={styles.deleteModalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.deleteButton]}
+                onPress={confirmDelete}
+              >
+                <Text style={styles.modalButtonText}>Xóa tài khoản</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={cancelDelete}
+              >
+                <Text style={styles.modalButtonText}>Hủy</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -403,7 +605,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#eee",
   },
   title: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: "bold",
     color: "#333",
   },
@@ -449,7 +651,7 @@ const styles = StyleSheet.create({
   tableRow: {
     flexDirection: "row",
     backgroundColor: "#fff",
-    paddingVertical: 15,
+    paddingVertical: 12,
     paddingHorizontal: 10,
     marginBottom: 5,
     borderRadius: 5,
@@ -465,24 +667,41 @@ const styles = StyleSheet.create({
   },
   cellText: {
     color: "#555",
-    fontSize: 14,
+    fontSize: 13,
   },
   statusContainer: {
     flexDirection: "row",
     alignItems: "center",
   },
   statusIndicator: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  selectBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: "#fff",
+    maxWidth: 100,
+  },
+  selectBoxText: {
+    color: "#555",
+    fontSize: 12,
   },
   actionsCell: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    justifyContent: "center",
+    alignItems: "center",
   },
   actionButton: {
-    padding: 5,
+    paddingRight: 50,
   },
   emptyState: {
     flex: 1,
@@ -495,20 +714,6 @@ const styles = StyleSheet.create({
     color: "#999",
     fontSize: 16,
   },
-  addButton: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#2196F3",
-    padding: 15,
-    margin: 10,
-    borderRadius: 8,
-  },
-  addButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
-    marginLeft: 10,
-  },
   modalContainer: {
     flex: 1,
     justifyContent: "center",
@@ -516,7 +721,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
   },
   modalContent: {
-    width: "90%",
+    width: "20%",
     backgroundColor: "#fff",
     borderRadius: 10,
     padding: 20,
@@ -561,6 +766,81 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold",
   },
+  roleModalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  roleModalContent: {
+    width: 280,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 8,
+    alignItems: "center",
+  },
+  roleOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    width: "100%",
+    alignItems: "center",
+  },
+  roleOptionText: {
+    fontSize: 14,
+    color: "#333",
+  },
+  roleCancelButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    backgroundColor: "#F44336",
+    borderRadius: 4,
+    marginTop: 8,
+    width: "100%",
+    alignItems: "center",
+  },
+  roleCancelText: {
+    fontSize: 14,
+    color: "white",
+  },
+  deleteModalContent: {
+    width: 300,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 20,
+    alignItems: "center",
+  },
+  deleteModalText: {
+    fontSize: 18,
+    color: "#333",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  deleteInfoContainer: {
+    paddingLeft: 30,
+    marginBottom: 20,
+    alignItems: "flex-start",
+    width: "100%",
+  },
+  deleteInfoText: {
+    fontSize: 14,
+    color: "#555",
+    marginBottom: 5,
+  },
+  deleteModalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  deleteButton: {
+    backgroundColor: "#F44336",
+    flex: 1,
+    marginRight: 10,
+  },
+  cancelButton: {
+    backgroundColor: "#9E9E9E",
+    flex: 1,
+    marginLeft: 10,
+  },
 });
 
-export default ViewGmailAccounts;
+export default UserManagementScreen;

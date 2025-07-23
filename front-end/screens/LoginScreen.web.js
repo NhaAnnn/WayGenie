@@ -14,12 +14,14 @@ import {
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import { useNavigation } from "@react-navigation/native";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [dimensions, setDimensions] = useState(Dimensions.get("window"));
-  const { login, isLoading, error } = useAuth();
+  const { login, isLoading } = useAuth();
 
   const navigation = useNavigation();
 
@@ -31,70 +33,57 @@ export default function LoginScreen() {
   }, []);
 
   const handleLogin = async () => {
-    const result = await login(email, password);
-    if (!result.success) {
-      Alert.alert(
-        "Lỗi đăng nhập",
-        result.error || "Đã xảy ra lỗi khi đăng nhập."
-      );
-    }
-  };
-
-  //
-  const handleLoginGoogle = async () => {
     try {
-      // 1. Kiểm tra Google Play Services (Android)
-      await GoogleSignin.hasPlayServices();
+      const result = await login(email, password);
+      if (result.success) {
+        // Hiển thị thông báo thành công
+        if (Platform.OS === "web") {
+          toast.success("Đăng nhập thành công!", {
+            position: "top-right",
+            autoClose: 2000, // Thông báo hiển thị trong 2 giây
+          });
+        } else {
+          Alert.alert("Thành công", "Bạn đã đăng nhập thành công!", [
+            { text: "OK" }, // Không cần hành động vì sẽ chuyển hướng
+          ]);
+        }
 
-      // 2. Đăng nhập bằng Google, lấy idToken và thông tin user
-      const { idToken, user } = await GoogleSignin.signIn();
-
-      // 3. Đăng nhập vào Firebase (optional)
-      const googleCredential = auth.GoogleAuthProvider.credential(idToken);
-      const firebaseUser = await auth().signInWithCredential(googleCredential);
-
-      // 4. Gửi thông tin về backend bằng Axios
-      // const response = await axios.post('localhost:3000/auth/google', {
-      //   idToken, // Backend sẽ verify token này
-      //   email: user.email,
-      //   name: user.name || user.givenName,
-      //   avatar: user.photo, // (optional)
-      // });
-
-      // 5. Xử lý kết quả từ backend
-      if (response.data.success) {
-        navigation.navigate("Home");
+        // Chuyển hướng sau 2 giây để người dùng đọc thông báo
+        setTimeout(() => {
+          const targetScreen =
+            result.user.role === "admin" ? "AdminDashboard" : "Home";
+          navigation.reset({
+            index: 0,
+            routes: [{ name: targetScreen }],
+          });
+        }, 2000); // Độ trễ 2 giây
       } else {
-        throw new Error(response.data.message);
+        // Hiển thị thông báo lỗi
+        const errorMessage = result.error || "Đã xảy ra lỗi khi đăng nhập.";
+        if (Platform.OS === "web") {
+          toast.error(errorMessage, {
+            position: "top-right",
+            autoClose: 3000, // Thông báo lỗi hiển thị trong 3 giây
+          });
+        } else {
+          Alert.alert("Lỗi", errorMessage);
+        }
       }
     } catch (error) {
-      Alert.alert("Lỗi", error.message);
+      // Xử lý lỗi bất ngờ
+      console.error("Unexpected error during login:", error);
+      const errorMessage = "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại.";
+      if (Platform.OS === "web") {
+        toast.error(errorMessage, {
+          position: "top-right",
+          autoClose: 3000,
+        });
+      } else {
+        Alert.alert("Lỗi", errorMessage);
+      }
     }
   };
-  // const handleLoginGoogle = async () => {
-  //   try {
-  //     const provider = new GoogleAuthProvider();
-  //     const auth = getAuth(app);
 
-  //     const result = await signInWithPopup(auth, provider);
-
-  //     const res = await fetch("/api/auth/google", {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify({
-  //         name: result.user.displayName,
-  //         email: result.user.email,
-  //       }),
-  //     });
-  //     const data = await res.json();
-  //     dispatch(signInSuccess(data));
-  //     navigate("/");
-  //   } catch (error) {
-  //     console.log("could not sign in with google", error);
-  //   }
-  // };
   // Tính toán kích thước dựa trên kích thước màn hình
   const frameWidth = Math.min(dimensions.width * 0.9, 500); // Tối đa 500px
   const isSmallScreen = dimensions.width < 400;
@@ -117,7 +106,7 @@ export default function LoginScreen() {
           {/* Ô nhập email */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, isSmallScreen && styles.labelSmall]}>
-              Email
+              Username hoặc Email
             </Text>
             <TextInput
               style={[styles.input, isSmallScreen && styles.inputSmall]}
@@ -147,7 +136,9 @@ export default function LoginScreen() {
 
           <View style={styles.divider} />
           <View style={styles.forgotPasswordContainer}>
-            <TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("ForgotPassword")}
+            >
               <Text
                 style={[
                   styles.footerLink,
@@ -182,25 +173,6 @@ export default function LoginScreen() {
               </Text>
             )}
           </TouchableOpacity>
-          {/* Nút đăng nhập */}
-          <TouchableOpacity
-            style={[
-              styles.loginButtonGoogle,
-              isLoading && styles.buttonDisabled,
-              isSmallScreen && styles.loginButtonSmall,
-            ]}
-            // onPress={handleLoginGoogle}
-            disabled={isLoading}
-          >
-            <Text
-              style={[
-                styles.loginButtonText,
-                isSmallScreen && styles.loginButtonTextSmall,
-              ]}
-            >
-              ĐĂNG NHẬP BẰNG GOOGLE
-            </Text>
-          </TouchableOpacity>
 
           {/* Liên kết đăng ký/quên mật khẩu */}
           <View style={[styles.footer, isSmallScreen && styles.footerSmall]}>
@@ -226,6 +198,19 @@ export default function LoginScreen() {
           </View>
         </View>
       </ScrollView>
+      {Platform.OS === "web" && (
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -295,13 +280,6 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     backgroundColor: "#007AFF",
-    padding: 14,
-    borderRadius: 6,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  loginButtonGoogle: {
-    backgroundColor: "#ff0000",
     padding: 14,
     borderRadius: 6,
     alignItems: "center",

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -9,44 +9,90 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
   ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import { useNavigation } from "@react-navigation/native";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
-  const [dimensions, setDimensions] = useState(Dimensions.get("window"));
-  const { register, isLoading, error } = useAuth();
+  const [localLoading, setLocalLoading] = useState(false); // Trạng thái tải cục bộ
+  const { register, error } = useAuth();
   const navigation = useNavigation();
+  const { width } = useWindowDimensions();
 
-  useEffect(() => {
-    const subscription = Dimensions.addEventListener("change", ({ window }) => {
-      setDimensions(window);
-    });
-    return () => subscription?.remove();
-  }, []);
+  const frameWidth = Math.min(width * 0.9, 500);
+  const isSmallScreen = width < 400;
+  const isVerySmallScreen = width < 350;
 
   const handleRegister = async () => {
-    if (password !== confirmPassword) {
-      Alert.alert("Lỗi", "Mật khẩu không khớp");
+    if (!name.trim()) {
+      if (Platform.OS === "web") {
+        toast.error("Vui lòng nhập họ và tên", {
+          position: "top-right",
+          autoClose: 3000,
+        });
+      } else {
+        Alert.alert("Lỗi", "Vui lòng nhập họ và tên");
+      }
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (Platform.OS === "web") {
+        toast.error("Email không hợp lệ", {
+          position: "top-right",
+          autoClose: 3000,
+        });
+      } else {
+        Alert.alert("Lỗi", "Email không hợp lệ");
+      }
       return;
     }
 
+    if (password !== confirmPassword) {
+      if (Platform.OS === "web") {
+        toast.error("Mật khẩu không khớp", {
+          position: "top-right",
+          autoClose: 3000,
+        });
+      } else {
+        Alert.alert("Lỗi", "Mật khẩu không khớp");
+      }
+      return;
+    }
+
+    setLocalLoading(true);
     const result = await register(name, email, password);
+    setLocalLoading(false);
+
     if (!result.success) {
-      Alert.alert("Lỗi đăng ký", result.error || "Đã xảy ra lỗi khi đăng ký.");
+      if (Platform.OS === "web") {
+        toast.error("Lỗi đăng ký: " + result.error, {
+          position: "top-right",
+          autoClose: 3000,
+        });
+      } else {
+        Alert.alert("Lỗi", "Lỗi đăng ký: " + result.error);
+      }
+      // Không điều hướng, giữ người dùng ở lại màn hình Register
+    } else {
+      if (Platform.OS === "web") {
+        toast.success("Đăng ký thành công!", {
+          position: "top-right",
+          autoClose: 3000,
+        });
+      } else {
+        Alert.alert("Thành công", "Đăng ký thành công!");
+      }
+      // Không điều hướng, để AppNavigator xử lý
     }
   };
-
-  // Tính toán kích thước dựa trên kích thước màn hình
-  const frameWidth = Math.min(dimensions.width * 0.9, 500); // Tối đa 500px
-  const isSmallScreen = dimensions.width < 400;
-  const isVerySmallScreen = dimensions.width < 350;
 
   return (
     <KeyboardAvoidingView
@@ -58,7 +104,6 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={[styles.frame, { width: frameWidth }]}>
-          {/* Tiêu đề */}
           <Text
             style={[
               styles.title,
@@ -69,7 +114,6 @@ export default function RegisterScreen() {
             Đăng ký tài khoản
           </Text>
 
-          {/* Ô nhập họ tên */}
           <View style={styles.inputGroup}>
             <Text
               style={[
@@ -93,7 +137,6 @@ export default function RegisterScreen() {
             />
           </View>
 
-          {/* Ô nhập email */}
           <View style={styles.inputGroup}>
             <Text
               style={[
@@ -119,7 +162,6 @@ export default function RegisterScreen() {
             />
           </View>
 
-          {/* Ô nhập mật khẩu */}
           <View style={styles.inputGroup}>
             <Text
               style={[
@@ -144,7 +186,6 @@ export default function RegisterScreen() {
             />
           </View>
 
-          {/* Ô nhập lại mật khẩu */}
           <View style={styles.inputGroup}>
             <Text
               style={[
@@ -171,18 +212,17 @@ export default function RegisterScreen() {
 
           <View style={styles.divider} />
 
-          {/* Nút đăng ký */}
           <TouchableOpacity
             style={[
               styles.registerButton,
-              isLoading && styles.buttonDisabled,
+              localLoading && styles.buttonDisabled,
               isSmallScreen && styles.registerButtonSmall,
               isVerySmallScreen && styles.registerButtonVerySmall,
             ]}
             onPress={handleRegister}
-            disabled={isLoading}
+            disabled={localLoading}
           >
-            {isLoading ? (
+            {localLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text
@@ -197,7 +237,6 @@ export default function RegisterScreen() {
             )}
           </TouchableOpacity>
 
-          {/* Liên kết đăng nhập */}
           <View
             style={[
               styles.footer,
@@ -228,10 +267,12 @@ export default function RegisterScreen() {
           </View>
         </View>
       </ScrollView>
+      {Platform.OS === "web" && <ToastContainer />}
     </KeyboardAvoidingView>
   );
 }
 
+// ... (styles giữ nguyên)
 const styles = StyleSheet.create({
   container: {
     flex: 1,

@@ -6,32 +6,28 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
-  Alert,
+  Modal,
+  Pressable,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import { useAuth } from "../../context/AuthContext";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
-const App = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userRole, setUserRole] = useState("user");
+const HomeScreen = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [hoveredItem, setHoveredItem] = useState(null);
   const scrollViewRef = useRef(null);
   const navigation = useNavigation();
-  const handleLogin = () => {
-    setIsLoggedIn(true);
-    setShowDropdown(false);
-    Alert.alert("Đăng nhập thành công", "Chào mừng bạn quay trở lại");
-  };
-
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setShowDropdown(false);
-    Alert.alert("Đã đăng xuất", "Bạn đã đăng xuất thành công");
-  };
+  const { authToken, userRole, logout } = useAuth();
 
   const toggleDropdown = () => {
     setShowDropdown(!showDropdown);
+  };
+
+  const closeDropdown = () => {
+    setShowDropdown(false);
   };
 
   const handleHoverIn = (itemName) => {
@@ -40,6 +36,30 @@ const App = () => {
 
   const handleHoverOut = () => {
     setHoveredItem(null);
+  };
+
+  const handleLogout = async () => {
+    console.log("Đăng xuất được nhấn");
+    try {
+      await logout();
+      closeDropdown();
+      toast.success("Đăng xuất thành công!", {
+        position: "top-right",
+        autoClose: 2000,
+      });
+      navigation.navigate("Login");
+    } catch (error) {
+      console.error("Logout error:", error.message);
+      toast.error("Không thể đăng xuất. Vui lòng thử lại.", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+    }
+  };
+
+  const handleProfileUpdate = () => {
+    closeDropdown();
+    navigation.navigate("PersonalInfoScreen");
   };
 
   return (
@@ -62,14 +82,14 @@ const App = () => {
 
             <TouchableOpacity
               style={styles.navItem}
-              onPress={() => {}}
+              onPress={() => navigation.navigate("Home")}
               onMouseEnter={() => handleHoverIn("Trang chủ")}
               onMouseLeave={handleHoverOut}
             >
               <Text
                 style={[
                   styles.navText,
-                  hoveredItem === "Trang chủ" && styles.hoveredNavText,
+                  hoveredItem === "Trang chủ" ? styles.hoveredNavText : null,
                 ]}
               >
                 Trang chủ
@@ -85,7 +105,7 @@ const App = () => {
               <Text
                 style={[
                   styles.navText,
-                  hoveredItem === "Hiện trạng" && styles.hoveredNavText,
+                  hoveredItem === "Hiện trạng" ? styles.hoveredNavText : null,
                 ]}
               >
                 Hiện trạng
@@ -101,7 +121,7 @@ const App = () => {
               <Text
                 style={[
                   styles.navText,
-                  hoveredItem === "Mô phỏng" && styles.hoveredNavText,
+                  hoveredItem === "Mô phỏng" ? styles.hoveredNavText : null,
                 ]}
               >
                 Mô phỏng
@@ -111,112 +131,69 @@ const App = () => {
             <View style={styles.profileContainer}>
               <TouchableOpacity
                 onPress={toggleDropdown}
-                onMouseEnter={() => handleHoverIn("Đăng nhập")}
+                onMouseEnter={() => handleHoverIn("Profile")}
                 onMouseLeave={handleHoverOut}
+                style={styles.avatarContainer}
               >
-                <Text
-                  style={[
-                    styles.navText,
-                    hoveredItem === "Đăng nhập" && styles.hoveredNavText,
-                  ]}
-                >
-                  {isLoggedIn ? "Tài khoản" : "Đăng nhập"}
-                </Text>
+                <Image
+                  source={require("../../assets/images/avatar.jpg")}
+                  style={styles.avatar}
+                />
               </TouchableOpacity>
 
-              {showDropdown && (
-                <View style={styles.dropdown}>
-                  {isLoggedIn ? (
-                    <>
-                      <TouchableOpacity
-                        style={styles.dropdownItem}
-                        onPress={() => setShowDropdown(false)}
-                        onMouseEnter={() => handleHoverIn("Thông tin")}
-                        onMouseLeave={handleHoverOut}
+              {/* Dropdown Menu - Sử dụng Modal để đảm bảo hiển thị trên các phần tử khác */}
+              <Modal
+                visible={showDropdown}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={closeDropdown}
+              >
+                <Pressable style={styles.modalOverlay} onPress={closeDropdown}>
+                  <View style={styles.dropdown}>
+                    <TouchableOpacity
+                      style={styles.dropdownItem}
+                      onPress={handleProfileUpdate}
+                      onMouseEnter={() =>
+                        handleHoverIn("Cập nhật thông tin cá nhân")
+                      }
+                      onMouseLeave={handleHoverOut}
+                    >
+                      <Text
+                        style={[
+                          styles.dropdownText,
+                          hoveredItem === "Cập nhật thông tin cá nhân"
+                            ? styles.hoveredDropdownText
+                            : null,
+                        ]}
                       >
-                        <Text
-                          style={
-                            hoveredItem === "Thông tin" &&
-                            styles.hoveredDropdownText
-                          }
-                        >
-                          Thông tin cá nhân
-                        </Text>
-                      </TouchableOpacity>
-                      {userRole === "admin" && (
-                        <TouchableOpacity
-                          style={styles.dropdownItem}
-                          onPress={() => setShowDropdown(false)}
-                          onMouseEnter={() => handleHoverIn("Quản trị")}
-                          onMouseLeave={handleHoverOut}
-                        >
-                          <Text
-                            style={
-                              hoveredItem === "Quản trị" &&
-                              styles.hoveredDropdownText
-                            }
-                          >
-                            Quản trị
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                      <TouchableOpacity
-                        style={[styles.dropdownItem, styles.logoutItem]}
-                        onPress={handleLogout}
-                        onMouseEnter={() => handleHoverIn("Đăng xuất")}
-                        onMouseLeave={handleHoverOut}
+                        Cập nhật trang cá nhân
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.dropdownItem}
+                      onPress={handleLogout}
+                      onMouseEnter={() => handleHoverIn("Đăng xuất")}
+                      onMouseLeave={handleHoverOut}
+                    >
+                      <Text
+                        style={[
+                          styles.dropdownText,
+                          hoveredItem === "Đăng xuất"
+                            ? styles.hoveredDropdownText
+                            : null,
+                        ]}
                       >
-                        <Text
-                          style={[
-                            styles.logoutText,
-                            hoveredItem === "Đăng xuất" &&
-                              styles.hoveredDropdownText,
-                          ]}
-                        >
-                          Đăng xuất
-                        </Text>
-                      </TouchableOpacity>
-                    </>
-                  ) : (
-                    <>
-                      <TouchableOpacity
-                        style={styles.dropdownItem}
-                        onPress={handleLogin}
-                        onMouseEnter={() => handleHoverIn("Đăng nhập")}
-                        onMouseLeave={handleHoverOut}
-                      >
-                        <Text
-                          style={
-                            hoveredItem === "Đăng nhập" &&
-                            styles.hoveredDropdownText
-                          }
-                        >
-                          Đăng nhập
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.dropdownItem}
-                        onPress={() => setShowDropdown(false)}
-                        onMouseEnter={() => handleHoverIn("Đăng ký")}
-                        onMouseLeave={handleHoverOut}
-                      >
-                        <Text
-                          style={
-                            hoveredItem === "Đăng ký" &&
-                            styles.hoveredDropdownText
-                          }
-                        >
-                          Đăng ký
-                        </Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
-                </View>
-              )}
+                        Đăng xuất
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </Pressable>
+              </Modal>
             </View>
           </View>
         </View>
 
+        {/* Phần còn lại của code giữ nguyên */}
         {/* Main Content - Split 50/50 */}
         <View style={styles.mainContent}>
           {/* Left Content (50%) */}
@@ -295,6 +272,17 @@ const App = () => {
           </Text>
         </View>
       </ScrollView>
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
     </View>
   );
 };
@@ -311,6 +299,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#3cb371",
     paddingTop: 20,
     paddingBottom: 10,
+    zIndex: 100, // Đảm bảo header hiển thị trên các phần tử khác
   },
   navBar: {
     flexDirection: "row",
@@ -340,41 +329,50 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: "white",
   },
-  hoveredDropdownText: {
-    fontWeight: "bold",
-    color: "#007bff",
-  },
   profileContainer: {
     position: "relative",
+    zIndex: 101, // Cao hơn header
+  },
+  avatarContainer: {
+    padding: 5,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "white",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.2)",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: 70,
+    paddingRight: 20,
   },
   dropdown: {
-    position: "absolute",
-    top: 40,
-    right: 0,
     backgroundColor: "white",
     borderRadius: 5,
-    padding: 10,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-    zIndex: 100,
-    minWidth: 150,
+    minWidth: 200,
   },
   dropdownItem: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+    paddingVertical: 15,
+    paddingHorizontal: 20,
   },
-  logoutItem: {
-    borderBottomWidth: 0,
+  dropdownText: {
+    color: "#333",
+    fontSize: 14,
   },
-  logoutText: {
-    color: "red",
+  hoveredDropdownText: {
+    color: "#3cb371",
+    fontWeight: "bold",
   },
-  // Main content styles
   mainContent: {
     flexDirection: "row",
     width: "100%",
@@ -400,7 +398,6 @@ const styles = StyleSheet.create({
     height: 300,
     maxWidth: 500,
   },
-  // Other styles remain the same
   labSection: {
     marginBottom: 30,
     alignItems: "center",
@@ -478,4 +475,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default App;
+export default HomeScreen;
