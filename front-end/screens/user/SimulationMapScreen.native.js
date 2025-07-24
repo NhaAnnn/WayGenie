@@ -19,7 +19,7 @@ import {
   Alert,
 } from "react-native";
 import MapboxGL from "@rnmapbox/maps";
-import MapWrapper from "../../components/MapWrapper.native.js";
+import MapWrapper from "../../components/SimulationMapWraper.native.js";
 import RouteFindingPanel from "../../components/RouteFindingPanel.native.js";
 import AirQualityMarker from "../../components/SimulationAirQualityMarker";
 import AirQualityCallout from "../../components/SimulationAirQualityCallout";

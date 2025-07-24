@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
-import MapWrapper from "../../components/MapWrapper.web.js";
+import MapWrapper from "../../components/SimulationMapWrapper.web.js";
 import { Source, Layer, Marker } from "react-map-gl";
 import RouteFindingPanel from "../../components/RouteFindingPanel.web.js";
 import AirQualityMarker from "../../components/SimulationAirQualityMarker.js";
