@@ -14,17 +14,15 @@ import {
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import { useNavigation } from "@react-navigation/native";
-import { ToastContainer, toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [dimensions, setDimensions] = useState(Dimensions.get("window"));
-  const { login, isLoading } = useAuth();
-
+  const { login, isLoading, userRole } = useAuth();
   const navigation = useNavigation();
 
+  // Xử lý thay đổi kích thước màn hình
   useEffect(() => {
     const subscription = Dimensions.addEventListener("change", ({ window }) => {
       setDimensions(window);
@@ -33,59 +31,38 @@ export default function LoginScreen() {
   }, []);
 
   const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ email và mật khẩu.");
+      return;
+    }
+
     try {
       const result = await login(email, password);
       if (result.success) {
-        // Hiển thị thông báo thành công
-        if (Platform.OS === "web") {
-          toast.success("Đăng nhập thành công!", {
-            position: "top-right",
-            autoClose: 2000, // Thông báo hiển thị trong 2 giây
-          });
-        } else {
-          Alert.alert("Thành công", "Bạn đã đăng nhập thành công!", [
-            { text: "OK" }, // Không cần hành động vì sẽ chuyển hướng
-          ]);
-        }
-
-        // Chuyển hướng sau 2 giây để người dùng đọc thông báo
-        setTimeout(() => {
-          const targetScreen =
-            result.user.role === "admin" ? "AdminDashboard" : "Home";
-          navigation.reset({
-            index: 0,
-            routes: [{ name: targetScreen }],
-          });
-        }, 2000); // Độ trễ 2 giây
-      } else {
-        // Hiển thị thông báo lỗi
-        const errorMessage = result.error || "Đã xảy ra lỗi khi đăng nhập.";
-        if (Platform.OS === "web") {
-          toast.error(errorMessage, {
-            position: "top-right",
-            autoClose: 3000, // Thông báo lỗi hiển thị trong 3 giây
-          });
-        } else {
-          Alert.alert("Lỗi", errorMessage);
-        }
+        Alert.alert("Thành công", "Bạn đã đăng nhập thành công!", [
+          {
+            text: "OK",
+            onPress: () => {
+              // Chuyển hướng dựa trên vai trò người dùng
+              const targetScreen =
+                userRole === "admin" ? "AdminDashboard" : "Home";
+              navigation.reset({
+                index: 0,
+                routes: [{ name: targetScreen }],
+              });
+            },
+          },
+        ]);
       }
+      // Lỗi đã được xử lý trong AuthContext, không cần hiển thị lại
     } catch (error) {
-      // Xử lý lỗi bất ngờ
       console.error("Unexpected error during login:", error);
-      const errorMessage = "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại.";
-      if (Platform.OS === "web") {
-        toast.error(errorMessage, {
-          position: "top-right",
-          autoClose: 3000,
-        });
-      } else {
-        Alert.alert("Lỗi", errorMessage);
-      }
+      Alert.alert("Lỗi", "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại.");
     }
   };
 
   // Tính toán kích thước dựa trên kích thước màn hình
-  const frameWidth = Math.min(dimensions.width * 0.9, 500); // Tối đa 500px
+  const frameWidth = Math.min(dimensions.width * 0.9, 500);
   const isSmallScreen = dimensions.width < 400;
 
   return (
@@ -106,11 +83,11 @@ export default function LoginScreen() {
           {/* Ô nhập email */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, isSmallScreen && styles.labelSmall]}>
-              Username hoặc Email
+              Email
             </Text>
             <TextInput
               style={[styles.input, isSmallScreen && styles.inputSmall]}
-              placeholder="Email"
+              placeholder="Nhập email"
               placeholderTextColor="#999"
               value={email}
               onChangeText={setEmail}
@@ -174,7 +151,7 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          {/* Liên kết đăng ký/quên mật khẩu */}
+          {/* Liên kết đăng ký */}
           <View style={[styles.footer, isSmallScreen && styles.footerSmall]}>
             <Text
               style={[
@@ -198,19 +175,6 @@ export default function LoginScreen() {
           </View>
         </View>
       </ScrollView>
-      {Platform.OS === "web" && (
-        <ToastContainer
-          position="top-right"
-          autoClose={3000}
-          hideProgressBar={false}
-          newestOnTop
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
-        />
-      )}
     </KeyboardAvoidingView>
   );
 }
