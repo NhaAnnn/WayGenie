@@ -71,10 +71,10 @@ const AdminDashboardScreen = () => {
             }),
           ]);
 
-        console.log("Routes Response:", routesResponse.data);
-        console.log("POIs Response:", poisResponse.data);
-        console.log("Stations Response:", stationsResponse.data);
-        console.log("Users Response:", usersResponse.data);
+        // console.log("Routes Response:", routesResponse.data);
+        // console.log("POIs Response:", poisResponse.data);
+        // console.log("Stations Response:", stationsResponse.data);
+        // console.log("Users Response:", usersResponse.data);
 
         setStats({
           routes: routesResponse.data.length || routesResponse.data.total || 0,

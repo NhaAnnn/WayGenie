@@ -5,7 +5,7 @@ const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs").promises;
-const { processData } = require("./dataProcessor");
+const { processData } = require("./utils/getDataRoute");
 
 // Tải biến môi trường từ secrets.env
 dotenv.config({ path: "./secrets.env" });
@@ -56,7 +56,7 @@ const coordinateRoutes = require("./routes/coordinates");
 const routeRoutes = require("./routes/routes");
 const authRoutes = require("./routes/auth");
 const aqiRoutes = require("./routes/aqis");
-const authRoutes = require("./routes/auth");
+// const authRoutes = require("./routes/auth");
 const simulateRoutes = require("./routes/simulate");
 const findWay = require("./routes/findWay");
 

@@ -1,6 +1,6 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const User = require("../models/User.js");
+const User = require("../models/user");
 const sendEmail = require("../config/sendEmail.js");
 const forgotPasswordTemplate = require("../utils/forgotPasswordTemplate.js");
 
