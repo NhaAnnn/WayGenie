@@ -28,6 +28,22 @@ const userSchema = new mongoose.Schema({
     enum: ["user", "admin"], // Các vai trò có thể có
     default: "user",
   },
+  phone: {
+    type: String,
+    required: false,
+  },
+  address: {
+    type: String,
+    required: false,
+  },
+  passwordResetOTP: {
+    type: String,
+    default: "",
+  },
+  passwordResetExpires: {
+    type: Date,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
