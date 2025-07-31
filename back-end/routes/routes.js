@@ -2,7 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const Route = require("../models/routes"); // Ensure correct path to your Mongoose model
-
+const mongoose = require("mongoose");
 // --- Middleware for logging API access ---
 router.use((req, res, next) => {
   console.log(

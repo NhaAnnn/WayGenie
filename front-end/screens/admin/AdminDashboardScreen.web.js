@@ -131,7 +131,7 @@ const AdminDashboardScreen = () => {
   const dashboardItems = [
     {
       icon: "key-outline",
-      title: "Quản lý Người dùng",
+      title: "Quản lý Tài khoản Người dùng",
       screen: "UserManagement",
     },
     {
@@ -284,14 +284,14 @@ const styles = StyleSheet.create({
     minHeight: "100vh",
   },
   sidebar: {
-    width: 250,
+    width: 280,
     backgroundColor: "#fff",
     padding: 20,
     borderRightWidth: 1,
     borderRightColor: "#e0e0e0",
   },
   sidebarTitle: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: "bold",
     color: "#333",
     marginBottom: 30,

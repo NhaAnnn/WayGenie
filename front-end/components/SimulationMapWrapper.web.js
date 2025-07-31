@@ -217,7 +217,7 @@ const MapWrapper = forwardRef(
           });
         }
       } else if (isMapReady && map && !startCoords && !endCoords) {
-        map.flyTo({ center: initialCenter, zoom: initialZoom, duration: 0 });
+        // map.flyTo({ center: initialCenter, zoom: initialZoom, duration: 0 });
         console.log("MapWrapper: Set to initial center:", initialCenter);
       } else {
         console.log("MapWrapper: Waiting for map or coords:", {
