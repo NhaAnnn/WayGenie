@@ -616,7 +616,7 @@ const MapWrapper = ({
 const styles = StyleSheet.create({
   marker: {
     borderRadius: 15,
-    padding: 5,
+    padding: 1,
     borderWidth: 2,
     borderColor: "white",
     shadowColor: "#000",

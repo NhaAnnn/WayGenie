@@ -10,6 +10,7 @@ import {
   Platform,
   Dimensions,
   SafeAreaView,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import {
@@ -17,12 +18,11 @@ import {
   BACKEND_API_BASE_URL,
 } from "../../secrets.js";
 import MapWrapper from "../../components/MapWrapper";
-import { toast } from "react-toastify";
+import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 const AIR_QUALITY_API_URL = `${BACKEND_API_BASE_URL}/aqis`;
 
-// Hàm debounce tự tạo
 const debounce = (func, delay) => {
   let timer;
   return function (...args) {
@@ -32,25 +32,19 @@ const debounce = (func, delay) => {
 };
 
 export default function StationManagement({ navigation }) {
-  // State for data layers
+  // State management
   const [layersVisibility, setLayersVisibility] = useState({
     airQuality: true,
-    coordinates: false, // Tắt layer coordinates để tránh xung đột
+    coordinates: false,
   });
-
-  // Backend data state
   const [rawAirQualityData, setRawAirQualityData] = useState([]);
   const [isBackendGraphDataLoading, setIsBackendGraphDataLoading] =
     useState(true);
   const [isError, setIsError] = useState(false);
-
-  // Data for map layers
   const [airQualityData, setAirQualityData] = useState({
     type: "FeatureCollection",
     features: [],
   });
-
-  // Station management state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [stations, setStations] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -79,62 +73,42 @@ export default function StationManagement({ navigation }) {
     default: screenWidth * 0.8,
   });
 
-  // Fetch initial data
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsBackendGraphDataLoading(true);
-        const aqRes = await fetch(AIR_QUALITY_API_URL);
-        const aqData = await aqRes.json();
+  // Fetch data from API
+  const fetchData = useCallback(async () => {
+    try {
+      setIsBackendGraphDataLoading(true);
+      let url = AIR_QUALITY_API_URL;
 
-        setRawAirQualityData(aqData);
-        setStations(aqData);
-        processAirQualityData(aqData);
-      } catch (error) {
-        console.error("Error fetching data:", error);
-        setIsError(true);
-      } finally {
-        setIsBackendGraphDataLoading(false);
+      if (searchQuery) {
+        url += `?stationName=${encodeURIComponent(searchQuery)}`;
       }
-    };
 
-    fetchData();
-  }, []);
+      const response = await fetch(url);
+      const data = await response.json();
 
-  // Tự động tìm kiếm khi searchQuery thay đổi
-  useEffect(() => {
-    const fetchStations = async () => {
-      try {
-        setLoading(true);
-        const url = searchQuery
-          ? `${AIR_QUALITY_API_URL}?stationName=${encodeURIComponent(
-              searchQuery
-            )}`
-          : AIR_QUALITY_API_URL;
-
-        const response = await fetch(url);
-        const data = await response.json();
-        setStations(data);
-      } catch (error) {
-        toast.error("Không thể tải dữ liệu trạm quan trắc");
-      } finally {
-        setLoading(false);
+      if (!response.ok) {
+        throw new Error(data.message || "Không thể tải dữ liệu");
       }
-    };
 
-    if (searchQuery === "") {
-      fetchStations();
-    } else {
-      const debouncedFetch = debounce(fetchStations, 500);
-      debouncedFetch();
+      setRawAirQualityData(data);
+      setStations(data);
+      processAirQualityData(data);
+      setIsError(false);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      setIsError(true);
+      toast.error(`Lỗi khi tải dữ liệu: ${error.message}`);
+    } finally {
+      setIsBackendGraphDataLoading(false);
     }
   }, [searchQuery]);
 
-  const processAirQualityData = (aqData) => {
+  // Process air quality data for map
+  const processAirQualityData = useCallback((aqData) => {
     const airQualityFeatures = aqData.map((station, index) => ({
       type: "Feature",
       properties: {
-        stationId: station.stationUid || `station-${index}`,
+        stationUid: station.stationUid || `station-${index}`,
         stationName: station.stationName || `Trạm ${index}`,
         aqi: station.aqi || 0,
         pm25: station.pm25 || 0,
@@ -152,8 +126,9 @@ export default function StationManagement({ navigation }) {
       type: "FeatureCollection",
       features: airQualityFeatures,
     });
-  };
+  }, []);
 
+  // Get AQI status
   const getAqiStatus = (aqi) => {
     if (!aqi || isNaN(aqi))
       return { color: "#888", description: "Không có dữ liệu" };
@@ -166,6 +141,7 @@ export default function StationManagement({ navigation }) {
     return { color: "#008000", description: "Tốt" };
   };
 
+  // Handle form submission for new station
   const handleCreateStation = async () => {
     if (
       !newStationForm.stationName ||
@@ -175,23 +151,31 @@ export default function StationManagement({ navigation }) {
       toast.error("Vui lòng điền đầy đủ tên trạm và tọa độ");
       return;
     }
-    if (
-      isNaN(parseFloat(newStationForm.longitude)) ||
-      isNaN(parseFloat(newStationForm.latitude))
-    ) {
+
+    const longitude = parseFloat(newStationForm.longitude);
+    const latitude = parseFloat(newStationForm.latitude);
+
+    if (isNaN(longitude) || isNaN(latitude)) {
       toast.error("Kinh độ và vĩ độ phải là số hợp lệ");
       return;
     }
+
     try {
       setLoading(true);
+
+      const stationUid = Date.now();
       const response = await fetch(AIR_QUALITY_API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          stationUid: Date.now(),
+          stationUid: stationUid,
           stationName: newStationForm.stationName,
+          location: {
+            type: "Point",
+            coordinates: [longitude, latitude],
+          },
           aqi: parseFloat(newStationForm.aqi) || 0,
           pm25: parseFloat(newStationForm.pm25) || 0,
           pm10: parseFloat(newStationForm.pm10) || 0,
@@ -199,46 +183,39 @@ export default function StationManagement({ navigation }) {
           no2: parseFloat(newStationForm.no2) || 0,
           so2: parseFloat(newStationForm.so2) || 0,
           o3: parseFloat(newStationForm.o3) || 0,
-          location: {
-            type: "Point",
-            coordinates: [
-              parseFloat(newStationForm.longitude),
-              parseFloat(newStationForm.latitude),
-            ],
-          },
-          description: newStationForm.description,
+          time: new Date().toISOString(),
+          description: newStationForm.description || "",
         }),
       });
 
       const data = await response.json();
 
-      if (response.ok) {
-        toast.success("Thêm trạm mới thành công");
-        setIsFormVisible(false);
-        setSearchQuery("");
-        resetForm();
-      } else {
-        throw new Error(data.message || "Failed to create station");
+      if (!response.ok) {
+        throw new Error(data.message || "Không thể tạo trạm mới");
       }
+
+      toast.success("Thêm trạm mới thành công");
+      setIsFormVisible(false);
+      setSearchQuery("");
+      resetForm();
+      fetchData();
     } catch (error) {
       toast.error(`Lỗi khi thêm trạm: ${error.message}`);
+      console.error("Create station error:", error);
     } finally {
       setLoading(false);
     }
   };
 
+  // Handle station update
   const handleUpdateStation = async (stationData) => {
-    if (
-      !stationData.stationName ||
-      !stationData.location.coordinates[0] ||
-      !stationData.location.coordinates[1]
-    ) {
-      toast.error("Vui lòng điền đầy đủ tên trạm và tọa độ");
+    if (!stationData._id || !stationData.stationUid) {
+      toast.error("Thiếu ID trạm");
       return;
     }
+
     try {
       setLoading(true);
-      const { stationUid, ...updateData } = stationData;
 
       const response = await fetch(
         `${AIR_QUALITY_API_URL}/${stationData._id}`,
@@ -247,46 +224,78 @@ export default function StationManagement({ navigation }) {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(updateData),
+          body: JSON.stringify({
+            stationName: stationData.stationName,
+            location: {
+              type: "Point",
+              coordinates: [
+                parseFloat(stationData.location.coordinates[0]),
+                parseFloat(stationData.location.coordinates[1]),
+              ],
+            },
+            aqi: parseFloat(stationData.aqi) || 0,
+            pm25: parseFloat(stationData.pm25) || 0,
+            pm10: parseFloat(stationData.pm10) || 0,
+            co: parseFloat(stationData.co) || 0,
+            no2: parseFloat(stationData.no2) || 0,
+            so2: parseFloat(stationData.so2) || 0,
+            o3: parseFloat(stationData.o3) || 0,
+            time: new Date().toISOString(),
+            description: stationData.description || "",
+          }),
         }
       );
 
       const data = await response.json();
 
-      if (response.ok) {
-        toast.success("Cập nhật trạm thành công");
-        setIsFormVisible(false);
-        setSearchQuery("");
-        resetForm();
-      } else {
-        throw new Error(data.message || "Failed to update station");
+      if (!response.ok) {
+        throw new Error(data.message || "Không thể cập nhật trạm");
       }
+
+      toast.success("Cập nhật trạm thành công");
+      setIsFormVisible(false);
+      setSearchQuery("");
+      resetForm();
+      fetchData();
     } catch (error) {
       toast.error(`Lỗi khi cập nhật trạm: ${error.message}`);
+      console.error("Update station error:", error);
     } finally {
       setLoading(false);
     }
   };
 
+  // Handle station deletion
   const deleteStation = async (id) => {
+    if (!id) {
+      toast.error("Thiếu ID trạm");
+      return;
+    }
+
     try {
+      setLoading(true);
       const response = await fetch(`${AIR_QUALITY_API_URL}/${id}`, {
         method: "DELETE",
       });
 
-      if (response.ok) {
-        toast.success("Đã xóa trạm quan trắc thành công");
-        setIsFormVisible(false);
-        setSearchQuery("");
-      } else {
+      if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.message || "Failed to delete station");
+        throw new Error(data.message || "Không thể xóa trạm");
       }
+
+      toast.success("Đã xóa trạm quan trắc thành công");
+      setIsFormVisible(false);
+      setSearchQuery("");
+      fetchData();
     } catch (error) {
-      toast.error("Không thể xóa trạm quan trắc");
+      toast.error(`Lỗi khi xóa trạm: ${error.message}`);
+      console.error("Delete station error:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Reset form
   const resetForm = () => {
     setNewStationForm({
       stationName: "",
@@ -307,12 +316,10 @@ export default function StationManagement({ navigation }) {
     setIsFormVisible(false);
   };
 
+  // Handle map click for position selection
   const handleMapClick = useCallback(
     (event) => {
-      console.log("Map clicked, isSelectingPosition:", isSelectingPosition);
-      console.log("Event data:", event);
       if (isSelectingPosition) {
-        // react-map-gl trả về event.lngLat dạng { lng, lat } hoặc [lng, lat]
         const lngLat = Array.isArray(event.lngLat)
           ? { lng: event.lngLat[0], lat: event.lngLat[1] }
           : event.lngLat;
@@ -328,7 +335,11 @@ export default function StationManagement({ navigation }) {
           });
           setSelectedPosition([lngLat.lng, lngLat.lat]);
           setIsSelectingPosition(false);
-          toast.info("Đã chọn tọa độ từ bản đồ");
+          toast.success(
+            `Đã chọn tọa độ: [${lngLat.lng.toFixed(6)}, ${lngLat.lat.toFixed(
+              6
+            )}]`
+          );
         } else {
           console.error("Invalid lngLat format:", lngLat);
           toast.error("Không thể lấy tọa độ từ bản đồ");
@@ -338,13 +349,40 @@ export default function StationManagement({ navigation }) {
     [isSelectingPosition, newStationForm]
   );
 
+  // Toggle layer visibility
+  const toggleLayer = (layerName) => {
+    setLayersVisibility((prev) => ({
+      ...prev,
+      [layerName]: !prev[layerName],
+    }));
+  };
+
+  // Initialize data
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   return (
     <SafeAreaView style={styles.container}>
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
+
       <View style={styles.mapContainer}>
         {isBackendGraphDataLoading && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color="#007BFF" />
-            <Text style={styles.loadingText}>Đang tải dữ liệu...</Text>
+            <Text style={styles.loadingText}>
+              {isError ? "Lỗi tải dữ liệu" : "Đang tải dữ liệu..."}
+            </Text>
           </View>
         )}
 
@@ -359,61 +397,90 @@ export default function StationManagement({ navigation }) {
         />
       </View>
 
-      <TouchableOpacity
-        style={styles.homeButton}
+      {/* Navigation buttons */}
+      <TouchableWithoutFeedback
         onPress={() => navigation.navigate("AdminDashboard")}
       >
-        <Ionicons name="home" size={24} color="#3366dd" />
-      </TouchableOpacity>
+        <View style={styles.homeButton}>
+          <Ionicons name="home" size={24} color="#3366dd" />
+        </View>
+      </TouchableWithoutFeedback>
 
-      <TouchableOpacity
-        style={styles.toggleButton}
-        onPress={() => {
-          console.log("Toggle sidebar, current state:", isSidebarOpen);
-          setIsSidebarOpen(!isSidebarOpen);
-        }}
+      <TouchableWithoutFeedback
+        onPress={() => setIsSidebarOpen(!isSidebarOpen)}
       >
-        <MaterialIcons
-          name={isSidebarOpen ? "arrow-back" : "edit-location"}
-          size={24}
-          color="#3366dd"
-        />
-      </TouchableOpacity>
+        <View style={styles.toggleButton}>
+          <MaterialIcons
+            name={isSidebarOpen ? "arrow-back" : "arrow-back"}
+            size={24}
+            color="#3366dd"
+          />
+        </View>
+      </TouchableWithoutFeedback>
 
+      {/* Sidebar content */}
       {isSidebarOpen && (
         <View style={[styles.sidebar, { width: sidebarWidth }]}>
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Quản Lý Trạm Quan Trắc</Text>
-            <TouchableOpacity onPress={() => setIsSidebarOpen(false)}>
-              <Ionicons name="close" size={24} color="#fff" />
-            </TouchableOpacity>
+            <Text style={styles.headerTitle}>
+              {isFormVisible
+                ? selectedStation
+                  ? "Chỉnh sửa trạm"
+                  : "Thêm trạm mới"
+                : "Quản Lý Trạm Quan Trắc"}
+            </Text>
+            <TouchableWithoutFeedback onPress={() => setIsSidebarOpen(false)}>
+              <View>
+                <MaterialIcons name="arrow-forward" size={24} color="#fff" />
+              </View>
+            </TouchableWithoutFeedback>
           </View>
 
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Tìm kiếm trạm quan trắc"
-              value={searchQuery}
-              onChangeText={(text) => setSearchQuery(text)}
-            />
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => {
-                console.log("Opening form for new station");
-                resetForm();
-                setIsFormVisible(true);
-              }}
-            >
-              <MaterialIcons name="add" size={24} color="#fff" />
-            </TouchableOpacity>
-          </View>
+          {/* Ẩn thanh tìm kiếm và nút thêm khi ở chế độ form */}
+          {!isFormVisible && (
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Tìm kiếm theo tên trạm..."
+                value={searchQuery}
+                onChangeText={(text) => setSearchQuery(text)}
+                placeholderTextColor="#999"
+              />
+              <TouchableWithoutFeedback
+                onPress={() => {
+                  resetForm();
+                  setIsFormVisible(true);
+                }}
+              >
+                <View style={styles.addButton}>
+                  <MaterialIcons name="add" size={24} color="#fff" />
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          )}
 
-          {isFormVisible && (
-            <View style={styles.formContainer}>
-              <Text style={styles.formTitle}>
-                {selectedStation ? "Chỉnh sửa trạm" : "Thêm trạm mới"}
-              </Text>
+          {isFormVisible ? (
+            <ScrollView style={styles.content}>
+              {isSelectingPosition && (
+                <View style={styles.selectingNodeContainer}>
+                  <Text style={styles.selectingNodeText}>
+                    Đang chọn tọa độ trên bản đồ...
+                  </Text>
+                  <TouchableWithoutFeedback
+                    onPress={() => {
+                      setIsSelectingPosition(false);
+                      setSelectedPosition(null);
+                    }}
+                  >
+                    <View style={styles.cancelSelectButton}>
+                      <MaterialIcons name="close" size={20} color="#F44336" />
+                    </View>
+                  </TouchableWithoutFeedback>
+                </View>
+              )}
 
+              {/* Form fields */}
+              <Text style={styles.inputLabel}>Tên trạm</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Tên trạm*"
@@ -423,181 +490,160 @@ export default function StationManagement({ navigation }) {
                 }
               />
 
+              <Text style={styles.inputLabel}>Tọa độ</Text>
               <View style={styles.coordinateRow}>
-                <View style={{ flex: 1, marginRight: 10 }}>
+                <View style={styles.nodeInputContainer}>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, styles.nodeInput]}
                     placeholder="Kinh độ*"
                     keyboardType="numeric"
                     value={newStationForm.longitude}
                     onChangeText={(text) =>
+                      /^-?\d*\.?\d*$/.test(text) &&
                       setNewStationForm({ ...newStationForm, longitude: text })
                     }
                     editable={!isSelectingPosition}
                   />
                 </View>
-                <View style={{ flex: 1, marginRight: 10 }}>
+                <View style={styles.nodeInputContainer}>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, styles.nodeInput]}
                     placeholder="Vĩ độ*"
                     keyboardType="numeric"
                     value={newStationForm.latitude}
                     onChangeText={(text) =>
+                      /^-?\d*\.?\d*$/.test(text) &&
                       setNewStationForm({ ...newStationForm, latitude: text })
                     }
                     editable={!isSelectingPosition}
                   />
                 </View>
-                <TouchableOpacity
-                  style={[
-                    styles.pickButton,
-                    isSelectingPosition && styles.pickButtonActive,
-                  ]}
-                  onPress={() => {
-                    console.log(
-                      "Toggling position selection, current state:",
-                      isSelectingPosition
-                    );
-                    setIsSelectingPosition(!isSelectingPosition);
-                  }}
-                  disabled={loading}
+                <TouchableWithoutFeedback
+                  onPress={() => setIsSelectingPosition(true)}
+                  disabled={isSelectingPosition}
                 >
-                  <MaterialIcons
-                    name={
-                      isSelectingPosition ? "location-searching" : "location-on"
-                    }
-                    size={24}
-                    color={isSelectingPosition ? "white" : "#1E90FF"}
-                  />
-                </TouchableOpacity>
+                  <View style={styles.selectNodeButton}>
+                    <MaterialIcons
+                      name="location-pin"
+                      size={20}
+                      color="#1E90FF"
+                    />
+                  </View>
+                </TouchableWithoutFeedback>
               </View>
 
-              <Text style={styles.sectionTitle}>Chất lượng không khí</Text>
+              <Text style={styles.inputLabel}>Chỉ số AQI</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Chỉ số AQI"
+                keyboardType="numeric"
+                value={newStationForm.aqi}
+                onChangeText={(text) =>
+                  /^\d*\.?\d*$/.test(text) &&
+                  setNewStationForm({ ...newStationForm, aqi: text })
+                }
+              />
 
+              <Text style={styles.inputLabel}>Chất lượng không khí</Text>
               <View style={styles.airQualityRow}>
-                <View style={{ flex: 1, marginRight: 10 }}>
+                <View style={styles.nodeInputContainer}>
+                  <Text style={styles.airQualityLabel}>PM2.5</Text>
                   <TextInput
-                    style={styles.input}
-                    placeholder="Chỉ số AQI"
-                    keyboardType="numeric"
-                    value={newStationForm.aqi}
-                    onChangeText={(text) =>
-                      setNewStationForm({ ...newStationForm, aqi: text })
-                    }
-                  />
-                  <Text style={styles.unitText}>AQI</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <TextInput
-                    style={styles.input}
+                    style={[styles.input, styles.nodeInput]}
                     placeholder="PM2.5"
                     keyboardType="numeric"
                     value={newStationForm.pm25}
                     onChangeText={(text) =>
+                      /^\d*\.?\d*$/.test(text) &&
                       setNewStationForm({ ...newStationForm, pm25: text })
                     }
                   />
-                  <Text style={styles.unitText}>µg/m³</Text>
                 </View>
-              </View>
-
-              <View style={styles.airQualityRow}>
-                <View style={{ flex: 1, marginRight: 10 }}>
+                <View style={styles.nodeInputContainer}>
+                  <Text style={styles.airQualityLabel}>PM10</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, styles.nodeInput]}
                     placeholder="PM10"
                     keyboardType="numeric"
                     value={newStationForm.pm10}
                     onChangeText={(text) =>
+                      /^\d*\.?\d*$/.test(text) &&
                       setNewStationForm({ ...newStationForm, pm10: text })
                     }
                   />
-                  <Text style={styles.unitText}>µg/m³</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="CO"
-                    keyboardType="numeric"
-                    value={newStationForm.co}
-                    onChangeText={(text) =>
-                      setNewStationForm({ ...newStationForm, co: text })
-                    }
-                  />
-                  <Text style={styles.unitText}>ppm</Text>
                 </View>
               </View>
 
               <View style={styles.airQualityRow}>
-                <View style={{ flex: 1, marginRight: 10 }}>
+                <View style={styles.nodeInputContainer}>
+                  <Text style={styles.airQualityLabel}>CO</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, styles.nodeInput]}
+                    placeholder="CO"
+                    keyboardType="numeric"
+                    value={newStationForm.co}
+                    onChangeText={(text) =>
+                      /^\d*\.?\d*$/.test(text) &&
+                      setNewStationForm({ ...newStationForm, co: text })
+                    }
+                  />
+                </View>
+                <View style={styles.nodeInputContainer}>
+                  <Text style={styles.airQualityLabel}>NO2</Text>
+                  <TextInput
+                    style={[styles.input, styles.nodeInput]}
                     placeholder="NO2"
                     keyboardType="numeric"
                     value={newStationForm.no2}
                     onChangeText={(text) =>
+                      /^\d*\.?\d*$/.test(text) &&
                       setNewStationForm({ ...newStationForm, no2: text })
                     }
                   />
-                  <Text style={styles.unitText}>ppb</Text>
                 </View>
-                <View style={{ flex: 1 }}>
+              </View>
+
+              <View style={styles.airQualityRow}>
+                <View style={styles.nodeInputContainer}>
+                  <Text style={styles.airQualityLabel}>SO2</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, styles.nodeInput]}
                     placeholder="SO2"
                     keyboardType="numeric"
                     value={newStationForm.so2}
                     onChangeText={(text) =>
+                      /^\d*\.?\d*$/.test(text) &&
                       setNewStationForm({ ...newStationForm, so2: text })
                     }
                   />
-                  <Text style={styles.unitText}>ppb</Text>
+                </View>
+                <View style={styles.nodeInputContainer}>
+                  <Text style={styles.airQualityLabel}>O3</Text>
+                  <TextInput
+                    style={[styles.input, styles.nodeInput]}
+                    placeholder="O3"
+                    keyboardType="numeric"
+                    value={newStationForm.o3}
+                    onChangeText={(text) =>
+                      /^\d*\.?\d*$/.test(text) &&
+                      setNewStationForm({ ...newStationForm, o3: text })
+                    }
+                  />
                 </View>
               </View>
 
-              <View style={{ marginBottom: 15 }}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="O3"
-                  keyboardType="numeric"
-                  value={newStationForm.o3}
-                  onChangeText={(text) =>
-                    setNewStationForm({ ...newStationForm, o3: text })
-                  }
-                />
-                <Text style={styles.unitText}>ppb</Text>
-              </View>
-
-              <View style={styles.formButtonRow}>
-                {selectedStation && (
-                  <TouchableOpacity
-                    style={[styles.formButton, styles.deleteButton]}
-                    onPress={() => deleteStation(selectedStation._id)}
-                    disabled={loading}
-                  >
-                    <Text style={styles.buttonText}>Xóa</Text>
-                  </TouchableOpacity>
-                )}
-
-                <TouchableOpacity
-                  style={[styles.formButton, styles.cancelButton]}
-                  onPress={resetForm}
-                >
-                  <Text style={styles.buttonText}>Hủy</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.formButton, styles.saveButton]}
+              <View style={styles.formButtons}>
+                <TouchableWithoutFeedback onPress={resetForm}>
+                  <View style={[styles.formButton, styles.cancelButton]}>
+                    <Text style={styles.buttonText}>Hủy</Text>
+                  </View>
+                </TouchableWithoutFeedback>
+                <TouchableWithoutFeedback
                   onPress={() => {
                     const stationData = {
-                      stationName: newStationForm.stationName,
-                      aqi: parseFloat(newStationForm.aqi) || 0,
-                      pm25: parseFloat(newStationForm.pm25) || 0,
-                      pm10: parseFloat(newStationForm.pm10) || 0,
-                      co: parseFloat(newStationForm.co) || 0,
-                      no2: parseFloat(newStationForm.no2) || 0,
-                      so2: parseFloat(newStationForm.so2) || 0,
-                      o3: parseFloat(newStationForm.o3) || 0,
+                      ...newStationForm,
+                      _id: selectedStation?._id,
+                      stationUid: selectedStation?.stationUid || Date.now(),
                       location: {
                         type: "Point",
                         coordinates: [
@@ -605,111 +651,139 @@ export default function StationManagement({ navigation }) {
                           parseFloat(newStationForm.latitude),
                         ],
                       },
-                      description: newStationForm.description,
+                      time: new Date().toISOString(),
                     };
 
                     if (selectedStation) {
-                      handleUpdateStation({
-                        ...stationData,
-                        _id: selectedStation._id,
-                      });
+                      handleUpdateStation(stationData);
                     } else {
                       handleCreateStation();
                     }
                   }}
                   disabled={loading}
                 >
-                  {loading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.buttonText}>
-                      {selectedStation ? "Cập nhật" : "Thêm trạm"}
-                    </Text>
-                  )}
-                </TouchableOpacity>
+                  <View style={[styles.formButton, styles.saveButton]}>
+                    {loading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.buttonText}>
+                        {selectedStation ? "Cập nhật" : "Lưu"}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableWithoutFeedback>
               </View>
-            </View>
+            </ScrollView>
+          ) : (
+            <ScrollView style={styles.content}>
+              {loading ? (
+                <ActivityIndicator size="large" color="#1E90FF" />
+              ) : stations.length === 0 ? (
+                <Text style={styles.noDataText}>
+                  {searchQuery
+                    ? "Không tìm thấy trạm phù hợp"
+                    : "Không có dữ liệu trạm quan trắc"}
+                </Text>
+              ) : (
+                stations.map((station) => (
+                  <View key={station._id} style={styles.stationItem}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.stationText}>
+                        {station.stationName?.length > 30
+                          ? `${station.stationName.substring(0, 27)}...`
+                          : station.stationName}
+                      </Text>
+                      <Text style={styles.stationSubText}>
+                        AQI: {station.aqi || "N/A"} | ID: {station.stationUid}
+                      </Text>
+                    </View>
+                    <View style={styles.iconGroup}>
+                      <TouchableWithoutFeedback
+                        onPress={() => {
+                          setSelectedStation(station);
+                          setNewStationForm({
+                            stationName: station.stationName,
+                            longitude:
+                              station.location?.coordinates[0]?.toString() ||
+                              "",
+                            latitude:
+                              station.location?.coordinates[1]?.toString() ||
+                              "",
+                            aqi: station.aqi?.toString() || "",
+                            pm25: station.pm25?.toString() || "",
+                            pm10: station.pm10?.toString() || "",
+                            co: station.co?.toString() || "",
+                            no2: station.no2?.toString() || "",
+                            so2: station.so2?.toString() || "",
+                            o3: station.o3?.toString() || "",
+                            description: station.description || "",
+                          });
+                          setSelectedPosition(
+                            station.location?.coordinates
+                              ? [...station.location.coordinates]
+                              : null
+                          );
+                          setIsFormVisible(true);
+                        }}
+                      >
+                        <View style={styles.actionButton}>
+                          <MaterialIcons
+                            name="edit"
+                            size={20}
+                            color="#4CAF50"
+                          />
+                        </View>
+                      </TouchableWithoutFeedback>
+                      <TouchableWithoutFeedback
+                        onPress={() => deleteStation(station._id)}
+                      >
+                        <View style={styles.actionButton}>
+                          <MaterialIcons
+                            name="delete"
+                            size={20}
+                            color="#F44336"
+                          />
+                        </View>
+                      </TouchableWithoutFeedback>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
           )}
-
-          <ScrollView style={styles.content}>
-            {loading ? (
-              <ActivityIndicator size="large" color="#1E90FF" />
-            ) : stations.length === 0 ? (
-              <Text style={styles.noDataText}>
-                {searchQuery
-                  ? "Không tìm thấy trạm phù hợp"
-                  : "Không có dữ liệu trạm quan trắc"}
-              </Text>
-            ) : (
-              stations.map((station) => (
-                <View key={station._id} style={styles.stationItem}>
-                  <View>
-                    <Text style={styles.stationText}>
-                      {station.stationName.length > 50
-                        ? `${station.stationName.substring(0, 47)}...`
-                        : station.stationName}
-                    </Text>
-                    <Text style={styles.stationSubText}>
-                      AQI: {station.aqi || "N/A"}
-                    </Text>
-                  </View>
-                  <View style={styles.iconGroup}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        console.log("Editing station:", station);
-                        setSelectedStation(station);
-                        setNewStationForm({
-                          stationName: station.stationName,
-                          longitude:
-                            station.location?.coordinates[0]?.toString() || "",
-                          latitude:
-                            station.location?.coordinates[1]?.toString() || "",
-                          aqi: station.aqi?.toString() || "",
-                          pm25: station.pm25?.toString() || "",
-                          pm10: station.pm10?.toString() || "",
-                          co: station.co?.toString() || "",
-                          no2: station.no2?.toString() || "",
-                          so2: station.so2?.toString() || "",
-                          o3: station.o3?.toString() || "",
-                          description: station.description || "",
-                        });
-                        setIsFormVisible(true);
-                        setSelectedPosition(
-                          station.location?.coordinates
-                            ? [
-                                station.location.coordinates[0],
-                                station.location.coordinates[1],
-                              ]
-                            : null
-                        );
-                      }}
-                    >
-                      <MaterialIcons name="edit" size={20} color="#4CAF50" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => {
-                        if (
-                          confirm(
-                            `Bạn có chắc muốn xóa trạm ${station.stationName}?`
-                          )
-                        ) {
-                          deleteStation(station._id);
-                        }
-                      }}
-                    >
-                      <MaterialIcons name="delete" size={20} color="#F44336" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
-            )}
-          </ScrollView>
         </View>
       )}
+
+      {/* Layer controls */}
+      <View style={styles.floatingLayerControlsLeft}>
+        <Text style={styles.controlPanelTitle}>Lớp dữ liệu:</Text>
+        <View style={styles.layerButtonsContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {Object.keys(layersVisibility).map((key) => (
+              <TouchableWithoutFeedback
+                key={key}
+                onPress={() => toggleLayer(key)}
+              >
+                <View
+                  style={[
+                    styles.layerButton,
+                    layersVisibility[key] ? styles.layerButtonActive : {},
+                  ]}
+                >
+                  <Text style={styles.layerButtonText}>
+                    {key === "airQuality" ? "Chất lượng không khí" : "Tọa độ"}
+                  </Text>
+                </View>
+              </TouchableWithoutFeedback>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
 
+// Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -775,6 +849,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     paddingHorizontal: 10,
     marginRight: 10,
+    backgroundColor: "#fff",
   },
   addButton: {
     width: 40,
@@ -809,6 +884,9 @@ const styles = StyleSheet.create({
   },
   iconGroup: {
     flexDirection: "row",
+  },
+  actionButton: {
+    marginLeft: 10,
   },
   homeButton: {
     position: "absolute",
@@ -850,22 +928,24 @@ const styles = StyleSheet.create({
     color: "#666",
     fontSize: 16,
   },
-  formContainer: {
-    padding: 15,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  formTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
+  selectingNodeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#e3f2fd",
+    padding: 10,
+    borderRadius: 5,
     marginBottom: 15,
+  },
+  selectingNodeText: {
+    fontSize: 14,
     color: "#1E90FF",
+    fontWeight: "bold",
   },
   input: {
     height: 40,
-    borderColor: "#ddd",
     borderWidth: 1,
+    borderColor: "#ddd",
     borderRadius: 4,
     paddingHorizontal: 10,
     marginBottom: 10,
@@ -874,65 +954,126 @@ const styles = StyleSheet.create({
   },
   coordinateRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 15,
   },
-  pickButton: {
+  airQualityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 15,
+    justifyContent: "space-between",
+  },
+  nodeInputContainer: {
+    flex: 1,
+    height: 50,
+    marginRight: 10,
+  },
+  nodeInput: {
+    flex: 1,
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  selectNodeButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    marginBottom: 15,
+    marginRight: 10,
+    borderRadius: 4,
     backgroundColor: "#f0f0f0",
     justifyContent: "center",
     alignItems: "center",
   },
-  pickButtonActive: {
-    backgroundColor: "#1E90FF",
-  },
-  airQualityRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 10,
-    color: "#333",
-  },
-  formButtonRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 10,
-  },
-  formButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 15,
+  cancelSelectButton: {
+    width: 40,
+    height: 40,
     borderRadius: 4,
-    marginLeft: 10,
-    minWidth: 80,
+    backgroundColor: "#ffebee",
+    justifyContent: "center",
     alignItems: "center",
   },
+  formButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 20,
+  },
+  formButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 4,
+    marginLeft: 10,
+  },
   cancelButton: {
-    backgroundColor: "#6c757d",
+    backgroundColor: "#ccc",
   },
   saveButton: {
     backgroundColor: "#1E90FF",
   },
-  deleteButton: {
-    backgroundColor: "#dc3545",
-    marginRight: "auto",
-  },
   buttonText: {
     color: "#fff",
+    fontWeight: "bold",
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 5,
+  },
+  airQualityLabel: {
     fontSize: 14,
     fontWeight: "600",
+    marginBottom: 5,
   },
-  unitText: {
+  floatingLayerControlsLeft: {
     position: "absolute",
-    right: 10,
-    top: 10,
-    color: "#666",
-    fontSize: 12,
+    bottom: Platform.OS === "ios" ? 30 : 20,
+    left: 15,
+    backgroundColor: "rgba(255, 255, 255, 0.98)",
+    borderRadius: 20,
+    padding: 10,
+    flexDirection: "column",
+    alignItems: "flex-start",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 5,
+  },
+  controlPanelTitle: {
+    fontSize: 15,
+    fontWeight: "bold",
+    marginBottom: 5,
+    color: "#2c3e50",
+    textAlign: "left",
+  },
+  layerButtonsContainer: {
+    flexDirection: "row",
+    marginBottom: 5,
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
+  },
+  layerButton: {
+    backgroundColor: "#e0e0e0",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    marginTop: 5,
+    marginRight: 8,
+    borderWidth: 0,
+    alignSelf: "flex-start",
+  },
+  layerButtonActive: {
+    backgroundColor: "#3498db",
+    borderColor: "#3498db",
+    shadowColor: "#3498db",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  layerButtonText: {
+    color: "black",
+    fontWeight: "600",
+    fontSize: 13,
   },
 });

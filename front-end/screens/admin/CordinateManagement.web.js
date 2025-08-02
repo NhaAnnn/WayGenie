@@ -65,12 +65,12 @@ export default function CoordinateManagement({ navigation }) {
     node_id: "",
     longitude: "",
     latitude: "",
-    volrpt: "",
+    volprt: "",
   });
   const [isSelectingCoordinate, setIsSelectingCoordinate] = useState(false);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [coordinateToDelete, setCoordinateToDelete] = useState(null);
-  const [selectedPosition, setSelectedPosition] = useState(null); // State để lưu tọa độ marker đã chọn
+  const [selectedPosition, setSelectedPosition] = useState(null);
 
   const COORDINATES_API_URL = `${BACKEND_API_BASE_URL}/coordinates`;
   const ROUTES_API_URL = `${BACKEND_API_BASE_URL}/routes`;
@@ -146,11 +146,11 @@ export default function CoordinateManagement({ navigation }) {
         type: "Feature",
         properties: {
           id: route.linkNo,
-          linkNo: route.linkNo ?? "N/A", // Thêm linkNo
-          FROMNODENO: route.FROMNODENO ?? "N/A", // Thêm FROMNODENO
-          TONODENO: route.TONODENO ?? "N/A", // Thêm TONODENO
+          linkNo: route.linkNo ?? "N/A",
+          FROMNODENO: route.FROMNODENO ?? "N/A",
+          TONODENO: route.TONODENO ?? "N/A",
           VC: route.VC ?? "N/A",
-          TSYSSET: route.TSYSSET ?? "N/A", // Thêm TSYSSET
+          TSYSSET: route.TSYSSET ?? "N/A",
           status:
             route.VC <= 0.6
               ? "smooth"
@@ -220,12 +220,12 @@ export default function CoordinateManagement({ navigation }) {
       node_id: coordinate?.node_id?.toString() || "",
       longitude: coordinate?.location?.coordinates[0]?.toString() || "",
       latitude: coordinate?.location?.coordinates[1]?.toString() || "",
-      volrpt: coordinate?.volrpt?.toString() || "",
+      volprt: coordinate?.volprt?.toString() || "",
     });
     setIsAddingCoordinate(true);
     setIsSidebarOpen(true);
     setIsSelectingCoordinate(false);
-    setSelectedPosition(null); // Xóa marker khi mở form
+    setSelectedPosition(null);
   };
 
   const closeAddEditForm = () => {
@@ -235,10 +235,10 @@ export default function CoordinateManagement({ navigation }) {
       node_id: "",
       longitude: "",
       latitude: "",
-      volrpt: "",
+      volprt: "",
     });
     setIsSelectingCoordinate(false);
-    setSelectedPosition(null); // Xóa marker khi đóng form
+    setSelectedPosition(null);
   };
 
   const validateForm = () => {
@@ -276,7 +276,7 @@ export default function CoordinateManagement({ navigation }) {
             parseFloat(formData.latitude),
           ],
         },
-        volrpt: parseInt(formData.volrpt) || 0,
+        volprt: parseInt(formData.volprt) || 0,
       };
 
       const response = await fetch(url, {
@@ -354,7 +354,7 @@ export default function CoordinateManagement({ navigation }) {
           longitude: lng.toFixed(6),
           latitude: lat.toFixed(6),
         }));
-        setSelectedPosition([lng, lat]); // Lưu tọa độ để hiển thị marker
+        setSelectedPosition([lng, lat]);
         setIsSelectingCoordinate(false);
         toast.success(`Đã chọn tọa độ: [${lng.toFixed(6)}, ${lat.toFixed(6)}]`);
       }
@@ -462,7 +462,7 @@ export default function CoordinateManagement({ navigation }) {
           coordinatesInfo={coordinatesInfo}
           onCloseCoordinatesPanel={closeCoordinatesInfo}
           onClick={handleMapClick}
-          selectedPosition={selectedPosition} // Truyền tọa độ marker đã chọn
+          selectedPosition={selectedPosition}
         />
       </View>
 
@@ -509,7 +509,7 @@ export default function CoordinateManagement({ navigation }) {
                   <TouchableWithoutFeedback
                     onPress={() => {
                       setIsSelectingCoordinate(false);
-                      setSelectedPosition(null); // Xóa marker khi hủy
+                      setSelectedPosition(null);
                     }}
                   >
                     <View style={styles.cancelSelectButton}>
@@ -518,7 +518,7 @@ export default function CoordinateManagement({ navigation }) {
                   </TouchableWithoutFeedback>
                 </View>
               )}
-
+              <Text style={styles.inputLabel}>Node ID</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Node ID*"
@@ -529,7 +529,7 @@ export default function CoordinateManagement({ navigation }) {
                 }
                 editable={!currentCoordinate}
               />
-
+              <Text style={styles.inputLabel}>Tọa độ</Text>
               <View style={styles.coordRow}>
                 <View style={styles.nodeInputContainer}>
                   <TextInput
@@ -570,17 +570,16 @@ export default function CoordinateManagement({ navigation }) {
                   </View>
                 </TouchableWithoutFeedback>
               </View>
-
+              <Text style={styles.inputLabel}>Lưu lượng qua nút (số xe)</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Volrpt"
                 keyboardType="numeric"
-                value={formData.volrpt}
+                value={formData.volprt}
                 onChangeText={(text) =>
-                  setFormData({ ...formData, volrpt: text })
+                  setFormData({ ...formData, volprt: text })
                 }
               />
-
               <View style={styles.formButtons}>
                 <TouchableWithoutFeedback onPress={closeAddEditForm}>
                   <View style={[styles.formButton, styles.cancelButton]}>
@@ -642,7 +641,7 @@ export default function CoordinateManagement({ navigation }) {
                           {coord.location?.coordinates[1] || 0}]
                         </Text>
                         <Text style={styles.coordSubtitle}>
-                          Volrpt: {coord.volrpt || "N/A"}
+                          Volrpt: {coord.volprt || "N/A"}
                         </Text>
                       </View>
                       <View style={styles.coordActions}>
@@ -954,6 +953,7 @@ const styles = StyleSheet.create({
   },
   coordRow: {
     flexDirection: "row",
+    alignItems: "center",
     marginBottom: 15,
   },
   nodeInputContainer: {
@@ -970,6 +970,8 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 4,
+    marginBottom: 15,
+    marginRight: 10,
     backgroundColor: "#f0f0f0",
     justifyContent: "center",
     alignItems: "center",
@@ -1039,6 +1041,12 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignItems: "center",
     marginHorizontal: 5,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 5,
   },
   deleteButton: {
     backgroundColor: "#F44336",
