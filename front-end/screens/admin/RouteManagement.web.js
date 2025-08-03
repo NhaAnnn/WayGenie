@@ -21,7 +21,7 @@ import {
 import MapWrapper from "../../components/MapWrapper";
 
 export default function RouteManagement({ navigation }) {
-  // Khởi tạo các state để quản lý dữ liệu giao diện và logic
+  // Khởi tạo các state
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [startCoords, setStartCoords] = useState(null);
@@ -67,7 +67,6 @@ export default function RouteManagement({ navigation }) {
     NAME: "",
     TSYSSET: "",
     LENGTH: "",
-    NUMLANES: "",
     VC: "",
     VCUR_PRTSYS_BIKE: "",
     VCUR_PRTSYS_CAR: "",
@@ -81,12 +80,71 @@ export default function RouteManagement({ navigation }) {
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [routeToDelete, setRouteToDelete] = useState(null);
 
-  // Định nghĩa URL API để lấy dữ liệu tọa độ và tuyến đường
+  // State cho selectbox TSYSSET
+  const [tsyssetOptions, setTsyssetOptions] = useState([
+    { label: "Xe buýt", value: "B2", selected: false },
+    { label: "Xe đạp", value: "BIKE", selected: false },
+    { label: "Xe hơi", value: "CAR", selected: false },
+    { label: "Xe khách", value: "Co", selected: false },
+    { label: "Xe tải", value: "HGV", selected: false },
+    { label: "Xe máy", value: "MC", selected: false },
+    { label: "Đi bộ", value: "W", selected: false },
+  ]);
+
+  // Định nghĩa URL API
   const COORDINATES_API_URL = `${BACKEND_API_BASE_URL}/coordinates`;
   const ROUTES_API_URL = `${BACKEND_API_BASE_URL}/routes`;
   const debounceTimeout = useRef(null);
 
-  // Hàm lấy dữ liệu tọa độ và tuyến đường từ backend
+  // Hàm tạo Link ID ngẫu nhiên
+  const generateRandomLinkId = useCallback(() => {
+    return Math.floor(100000 + Math.random() * 9000000);
+  }, []);
+
+  // Hàm kiểm tra Link ID đã tồn tại
+  const checkLinkIdExists = useCallback(
+    (id) => {
+      return allRoutes.some((route) => route.linkNo === id);
+    },
+    [allRoutes]
+  );
+
+  // Hàm lấy Link ID mới không trùng lặp
+  const getUniqueLinkId = useCallback(() => {
+    let newId;
+    let attempts = 0;
+    const maxAttempts = 100;
+
+    do {
+      newId = generateRandomLinkId();
+      attempts++;
+      if (attempts >= maxAttempts) {
+        toast.error("Không thể tạo Link ID mới sau nhiều lần thử");
+        return null;
+      }
+    } while (checkLinkIdExists(newId));
+
+    return newId;
+  }, [generateRandomLinkId, checkLinkIdExists]);
+
+  // Hàm xử lý khi chọn phương tiện TSYSSET
+  const handleTsyssetChange = (index) => {
+    const updatedOptions = [...tsyssetOptions];
+    updatedOptions[index].selected = !updatedOptions[index].selected;
+    setTsyssetOptions(updatedOptions);
+
+    const selectedValues = updatedOptions
+      .filter((option) => option.selected)
+      .map((option) => option.value)
+      .join(",");
+
+    setFormData({
+      ...formData,
+      TSYSSET: selectedValues || "",
+    });
+  };
+
+  // Hàm lấy dữ liệu từ backend
   const fetchGraphData = useCallback(
     async (retries = 3) => {
       setIsBackendGraphDataLoading(true);
@@ -136,7 +194,7 @@ export default function RouteManagement({ navigation }) {
     [COORDINATES_API_URL, ROUTES_API_URL]
   );
 
-  // Hàm xử lý dữ liệu thời gian thực để tạo feature cho bản đồ
+  // Hàm xử lý dữ liệu thời gian thực
   const processRealtimeData = useCallback(() => {
     if (allCoordinates.length === 0 || allRoutes.length === 0) return;
 
@@ -210,7 +268,7 @@ export default function RouteManagement({ navigation }) {
     });
   }, [allCoordinates, allRoutes]);
 
-  // Hàm xử lý tìm kiếm tuyến đường theo linkNo
+  // Hàm tìm kiếm tuyến đường
   const handleSearch = (query) => {
     setSearchQuery(query);
     if (!query) {
@@ -273,8 +331,10 @@ export default function RouteManagement({ navigation }) {
     });
   };
 
-  // Hàm mở form thêm hoặc chỉnh sửa tuyến đường
+  // Hàm mở form thêm/chỉnh sửa
   const openAddEditForm = (route = null) => {
+    const newLinkId = route ? null : getUniqueLinkId();
+
     console.log("Dữ liệu tuyến đường:", route);
     if (route) {
       if (!route.VC || !route.VCUR_PRTSYS_BIKE) {
@@ -287,13 +347,12 @@ export default function RouteManagement({ navigation }) {
     }
     setCurrentRoute(route);
     setFormData({
-      linkNo: route?.linkNo?.toString() || "",
+      linkNo: route?.linkNo?.toString() || newLinkId?.toString() || "",
       FROMNODENO: route?.FROMNODENO?.toString() || "",
       TONODENO: route?.TONODENO?.toString() || "",
       NAME: route?.NAME || "",
       TSYSSET: route?.TSYSSET || "",
       LENGTH: route?.LENGTH?.toString() || "",
-      NUMLANES: route?.NUMLANES?.toString() || "",
       VC: route?.VC?.toString() || "",
       VCUR_PRTSYS_BIKE: route?.VCUR_PRTSYS_BIKE?.toString() || "",
       VCUR_PRTSYS_CAR: route?.VCUR_PRTSYS_CAR?.toString() || "",
@@ -301,13 +360,32 @@ export default function RouteManagement({ navigation }) {
       VCUR_PRTSYS_HGV: route?.VCUR_PRTSYS_HGV?.toString() || "",
       VCUR_PRTSYS_MC: route?.VCUR_PRTSYS_MC?.toString() || "",
     });
+
+    // Khởi tạo giá trị TSYSSET
+    if (route?.TSYSSET) {
+      const selectedValues = route.TSYSSET.split(",");
+      setTsyssetOptions((prevOptions) =>
+        prevOptions.map((option) => ({
+          ...option,
+          selected: selectedValues.includes(option.value),
+        }))
+      );
+    } else {
+      setTsyssetOptions((prevOptions) =>
+        prevOptions.map((option) => ({
+          ...option,
+          selected: false,
+        }))
+      );
+    }
+
     setIntermediateCoords(route?.geometry?.coordinates?.slice(1, -1) || []);
     setIsAddingRoute(true);
     setIsSidebarOpen(true);
     setEditingCoordIndex(null);
   };
 
-  // Hàm đóng form thêm/chỉnh sửa
+  // Hàm đóng form
   const closeAddEditForm = () => {
     setIsAddingRoute(false);
     setCurrentRoute(null);
@@ -322,7 +400,6 @@ export default function RouteManagement({ navigation }) {
       NAME: "",
       TSYSSET: "",
       LENGTH: "",
-      NUMLANES: "",
       VC: "",
       VCUR_PRTSYS_BIKE: "",
       VCUR_PRTSYS_CAR: "",
@@ -332,17 +409,104 @@ export default function RouteManagement({ navigation }) {
     });
   };
 
-  // Hàm xác thực dữ liệu form
+  // Hàm xác thực dữ liệu form (đã cập nhật)
   const validateForm = () => {
+    // Kiểm tra Link ID
+    if (!formData.linkNo || isNaN(formData.linkNo)) {
+      toast.error("Link ID phải là số hợp lệ");
+      return false;
+    }
+
+    // Kiểm tra trùng lặp Link ID khi thêm mới
+    if (!currentRoute && checkLinkIdExists(parseInt(formData.linkNo))) {
+      toast.error("Link ID đã tồn tại trong hệ thống");
+      return false;
+    }
+
+    // Kiểm tra From Node
+    if (!formData.FROMNODENO || isNaN(formData.FROMNODENO)) {
+      toast.error("From Node phải là số hợp lệ");
+      return false;
+    }
+
+    // Kiểm tra To Node
+    if (!formData.TONODENO || isNaN(formData.TONODENO)) {
+      toast.error("To Node phải là số hợp lệ");
+      return false;
+    }
+
+    // Kiểm tra From Node và To Node không giống nhau
+    if (formData.FROMNODENO === formData.TONODENO) {
+      toast.error("From Node và To Node không được giống nhau");
+      return false;
+    }
+
+    // Kiểm tra độ dài > 0
+    if (!formData.LENGTH || parseFloat(formData.LENGTH) <= 0) {
+      toast.error("Độ dài phải lớn hơn 0");
+      return false;
+    }
+
+    // Kiểm tra VC > 0
+    if (!formData.VC || parseFloat(formData.VC) < 0) {
+      toast.error("Tỷ lệ V/C không được nhỏ hơn 0");
+      return false;
+    }
+
+    // Kiểm tra ít nhất một loại phương tiện được chọn
+    if (!formData.TSYSSET || formData.TSYSSET.trim() === "") {
+      toast.error("Vui lòng chọn ít nhất một loại phương tiện");
+      return false;
+    }
+
+    // Kiểm tra các thông số phương tiện
+    const vehicleParams = [
+      "VCUR_PRTSYS_BIKE",
+      "VCUR_PRTSYS_CAR",
+      "VCUR_PRTSYS_CO",
+      "VCUR_PRTSYS_HGV",
+      "VCUR_PRTSYS_MC",
+    ];
+
+    for (const param of vehicleParams) {
+      const value = formData[param];
+      if (!value || isNaN(value) || parseInt(value) <= 0) {
+        toast.error(`Thông số ${param} phải là số nguyên lớn hơn 0`);
+        return false;
+      }
+    }
+
     return true;
   };
 
-  // Hàm lưu tuyến đường (tạo mới hoặc cập nhật)
+  // Hàm lưu tuyến đường (đã cập nhật)
   const saveRoute = async () => {
     if (!validateForm()) return;
 
     try {
       setLoading(true);
+
+      // Kiểm tra lại một lần nữa trước khi gửi dữ liệu
+      const vehicleSpeeds = [
+        parseInt(formData.VCUR_PRTSYS_BIKE),
+        parseInt(formData.VCUR_PRTSYS_CAR),
+        parseInt(formData.VCUR_PRTSYS_CO),
+        parseInt(formData.VCUR_PRTSYS_HGV),
+        parseInt(formData.VCUR_PRTSYS_MC),
+      ];
+
+      if (vehicleSpeeds.some((speed) => speed <= 0)) {
+        throw new Error("Tốc độ phương tiện phải lớn hơn 0");
+      }
+
+      if (parseFloat(formData.LENGTH) <= 0) {
+        throw new Error("Độ dài phải lớn hơn 0");
+      }
+
+      if (parseFloat(formData.VC) <= 0) {
+        throw new Error("Tỷ lệ V/C phải lớn hơn 0");
+      }
+
       const method = currentRoute ? "PUT" : "POST";
       const url = currentRoute
         ? `${ROUTES_API_URL}/${currentRoute._id}`
@@ -365,7 +529,7 @@ export default function RouteManagement({ navigation }) {
         toCoord.location.coordinates,
       ];
 
-      // Tạo payload, loại bỏ linkNo khi cập nhật tuyến đường
+      // Tạo payload
       const payload = {
         ...(method === "POST" && { linkNo: parseInt(formData.linkNo) }),
         FROMNODENO: parseInt(formData.FROMNODENO),
@@ -373,7 +537,6 @@ export default function RouteManagement({ navigation }) {
         NAME: formData.NAME || "",
         TSYSSET: formData.TSYSSET || "B2,BIKE,CAR,Co,HGV,MC,W",
         LENGTH: parseFloat(formData.LENGTH) || 0,
-        NUMLANES: parseInt(formData.NUMLANES) || 1,
         VC: parseFloat(formData.VC) || 0,
         VCUR_PRTSYS_BIKE: parseInt(formData.VCUR_PRTSYS_BIKE) || 0,
         VCUR_PRTSYS_CAR: parseInt(formData.VCUR_PRTSYS_CAR) || 0,
@@ -436,7 +599,7 @@ export default function RouteManagement({ navigation }) {
     setIsDeleteModalVisible(true);
   };
 
-  // Hàm xác nhận xóa tuyến đường
+  // Hàm xác nhận xóa
   const confirmDeleteRoute = async () => {
     try {
       setLoading(true);
@@ -513,7 +676,7 @@ export default function RouteManagement({ navigation }) {
     setIsSelectingIntermediate(true);
   };
 
-  // Hàm xử lý khi nhấn vào marker trên bản đồ
+  // Hàm xử lý khi nhấn vào marker
   const handleCoordinateMarkerPress = useCallback(
     (feature) => {
       if (selectingNode) {
@@ -726,16 +889,33 @@ export default function RouteManagement({ navigation }) {
               )}
 
               <Text style={styles.label}>Link ID</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Nhập id*"
-                keyboardType="numeric"
-                value={formData.linkNo}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, linkNo: text })
-                }
-                editable={!currentRoute}
-              />
+              <View style={styles.idGenerationRow}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nhập id*"
+                  keyboardType="numeric"
+                  value={formData.linkNo}
+                  onChangeText={(text) =>
+                    setFormData({ ...formData, linkNo: text })
+                  }
+                  editable={!currentRoute}
+                />
+                {!currentRoute && (
+                  <TouchableWithoutFeedback
+                    onPress={() => {
+                      const newId = getUniqueLinkId();
+                      if (newId) {
+                        setFormData({ ...formData, linkNo: newId.toString() });
+                      }
+                    }}
+                  >
+                    <View style={styles.generateIdButton}>
+                      <MaterialIcons name="autorenew" size={20} color="#fff" />
+                      <Text style={styles.generateIdText}>Tạo ID mới</Text>
+                    </View>
+                  </TouchableWithoutFeedback>
+                )}
+              </View>
 
               <View style={styles.routeRow}>
                 <View style={styles.nodeInputContainer}>
@@ -877,7 +1057,7 @@ export default function RouteManagement({ navigation }) {
               <Text style={styles.label}>Tên tuyến đường</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Tên tuyến đường"
+                placeholder="Nhập tên tuyến đường"
                 value={formData.NAME}
                 onChangeText={(text) =>
                   setFormData({ ...formData, NAME: text })
@@ -887,90 +1067,133 @@ export default function RouteManagement({ navigation }) {
               <Text style={styles.label}>Độ dài (km)</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Độ dài (km)*"
+                placeholder="Nhập độ dài (km)*"
                 keyboardType="numeric"
                 value={formData.LENGTH}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, LENGTH: text })
-                }
-              />
-
-              <Text style={styles.label}>Số làn đường</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Số làn đường*"
-                keyboardType="numeric"
-                value={formData.NUMLANES}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, NUMLANES: text })
-                }
+                onChangeText={(text) => {
+                  // Cho phép số thập phân nhưng phải > 0
+                  const cleanedText = text.replace(/[^0-9.]/g, "");
+                  setFormData({ ...formData, LENGTH: cleanedText });
+                }}
               />
 
               <Text style={styles.label}>Tỷ lệ V/C</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Tỷ lệ V/C"
+                placeholder="Nhập tỷ lệ V/C"
                 keyboardType="numeric"
                 value={formData.VC}
-                onChangeText={(text) => setFormData({ ...formData, VC: text })}
+                onChangeText={(text) => {
+                  // Cho phép số thập phân nhưng phải > 0
+                  const cleanedText = text.replace(/[^0-9.]/g, "");
+                  setFormData({ ...formData, VC: cleanedText });
+                }}
               />
+
+              {/* Multi-select cho TSYSSET */}
+              <Text style={styles.label}>Loại phương tiện</Text>
+              <View style={styles.multiSelectContainer}>
+                {tsyssetOptions.map((option, index) => (
+                  <TouchableWithoutFeedback
+                    key={option.value}
+                    onPress={() => handleTsyssetChange(index)}
+                  >
+                    <View
+                      style={[
+                        styles.multiSelectOption,
+                        option.selected && styles.multiSelectOptionSelected,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.multiSelectOptionText,
+                          option.selected &&
+                            styles.multiSelectOptionTextSelected,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </View>
+                  </TouchableWithoutFeedback>
+                ))}
+              </View>
 
               <Text style={styles.sectionTitle}>Thông số phương tiện</Text>
+              <View style={styles.vehicleParamsContainer}>
+                <View style={styles.vehicleParamsColumn}>
+                  <Text style={styles.label}>Tốc độ xe đạp (km/h)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Tốc độ xe đạp"
+                    keyboardType="numeric"
+                    value={formData.VCUR_PRTSYS_BIKE}
+                    onChangeText={(text) => {
+                      // Chỉ cho phép nhập số nguyên dương
+                      const cleanedText = text.replace(/[^0-9]/g, "");
+                      setFormData({
+                        ...formData,
+                        VCUR_PRTSYS_BIKE: cleanedText,
+                      });
+                    }}
+                  />
 
-              <Text style={styles.label}>Tốc độ xe đạp (km/h)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Tốc độ xe đạp (km/h)"
-                keyboardType="numeric"
-                value={formData.VCUR_PRTSYS_BIKE}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, VCUR_PRTSYS_BIKE: text })
-                }
-              />
+                  <Text style={styles.label}>Tốc độ xe hơi (km/h)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Tốc độ xe hơi"
+                    keyboardType="numeric"
+                    value={formData.VCUR_PRTSYS_CAR}
+                    onChangeText={(text) => {
+                      const cleanedText = text.replace(/[^0-9]/g, "");
+                      setFormData({
+                        ...formData,
+                        VCUR_PRTSYS_CAR: cleanedText,
+                      });
+                    }}
+                  />
 
-              <Text style={styles.label}>Tốc độ xe hơi (km/h)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Tốc độ xe hơi (km/h)"
-                keyboardType="numeric"
-                value={formData.VCUR_PRTSYS_CAR}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, VCUR_PRTSYS_CAR: text })
-                }
-              />
+                  <Text style={styles.label}>Tốc độ xe khách (km/h)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Tốc độ xe khách"
+                    keyboardType="numeric"
+                    value={formData.VCUR_PRTSYS_CO}
+                    onChangeText={(text) => {
+                      const cleanedText = text.replace(/[^0-9]/g, "");
+                      setFormData({ ...formData, VCUR_PRTSYS_CO: cleanedText });
+                    }}
+                  />
+                </View>
 
-              <Text style={styles.label}>Tốc độ xe khách (km/h)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Tốc độ xe khách (km/h)"
-                keyboardType="numeric"
-                value={formData.VCUR_PRTSYS_CO}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, VCUR_PRTSYS_CO: text })
-                }
-              />
+                <View style={styles.vehicleParamsColumn}>
+                  <Text style={styles.label}>Tốc độ xe tải (km/h)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Nhập tốc độ xe tải"
+                    keyboardType="numeric"
+                    value={formData.VCUR_PRTSYS_HGV}
+                    onChangeText={(text) => {
+                      const cleanedText = text.replace(/[^0-9]/g, "");
+                      setFormData({
+                        ...formData,
+                        VCUR_PRTSYS_HGV: cleanedText,
+                      });
+                    }}
+                  />
 
-              <Text style={styles.label}>Tốc độ xe tải (km/h)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Tốc độ xe tải (km/h)"
-                keyboardType="numeric"
-                value={formData.VCUR_PRTSYS_HGV}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, VCUR_PRTSYS_HGV: text })
-                }
-              />
-
-              <Text style={styles.label}>Tốc độ xe máy (km/h)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Tốc độ xe máy (km/h)"
-                keyboardType="numeric"
-                value={formData.VCUR_PRTSYS_MC}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, VCUR_PRTSYS_MC: text })
-                }
-              />
+                  <Text style={styles.label}>Tốc độ xe máy (km/h)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Nhập tốc độ xe máy"
+                    keyboardType="numeric"
+                    value={formData.VCUR_PRTSYS_MC}
+                    onChangeText={(text) => {
+                      const cleanedText = text.replace(/[^0-9]/g, "");
+                      setFormData({ ...formData, VCUR_PRTSYS_MC: cleanedText });
+                    }}
+                  />
+                </View>
+              </View>
 
               <View style={styles.formButtons}>
                 <TouchableWithoutFeedback onPress={closeAddEditForm}>
@@ -1044,7 +1267,7 @@ export default function RouteManagement({ navigation }) {
                             {route?.TONODENO || "N/A"}
                           </Text>
                           <Text style={styles.routeSubtitle}>
-                            Số làn: {route?.NUMLANES || "N/A"}
+                            Khoảng cách: {route?.LENGTH || "N/A"} km
                           </Text>
                         </View>
                         <View style={styles.routeActions}>
@@ -1406,7 +1629,7 @@ const styles = StyleSheet.create({
   },
   routeRow: {
     flexDirection: "row",
-    marginBottom: 15,
+    marginBottom: 6,
   },
   sectionTitle: {
     fontSize: 16,
@@ -1527,5 +1750,64 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     backgroundColor: "#F44336",
+  },
+  multiSelectContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  vehicleParamsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 15,
+  },
+  vehicleParamsColumn: {
+    flex: 1,
+    paddingHorizontal: 5,
+  },
+  multiSelectOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    marginRight: 8,
+    marginBottom: 8,
+    backgroundColor: "#f5f5f5",
+  },
+  multiSelectOptionSelected: {
+    backgroundColor: "#1E90FF",
+    borderColor: "#1E90FF",
+  },
+  multiSelectOptionText: {
+    color: "#333",
+  },
+  multiSelectOptionTextSelected: {
+    color: "white",
+  },
+  idGenerationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  generateIdButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 10,
+    marginBottom: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    backgroundColor: "#1E90FF",
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    cursor: "pointer",
+  },
+  generateIdText: {
+    marginLeft: 8,
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

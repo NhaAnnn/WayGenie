@@ -81,6 +81,37 @@ export default function CoordinateManagement({ navigation }) {
     default: Dimensions.get("window").width * 0.8,
   });
 
+  // Hàm tạo ID ngẫu nhiên
+  const generateRandomId = useCallback(() => {
+    return Math.floor(100000 + Math.random() * 9000000);
+  }, []);
+
+  // Hàm kiểm tra ID đã tồn tại chưa
+  const checkIdExists = useCallback(
+    (id) => {
+      return allCoordinates.some((coord) => coord.node_id === id);
+    },
+    [allCoordinates]
+  );
+
+  // Hàm lấy ID mới không trùng lặp
+  const getUniqueId = useCallback(() => {
+    let newId;
+    let attempts = 0;
+    const maxAttempts = 100; // Giới hạn số lần thử
+
+    do {
+      newId = generateRandomId();
+      attempts++;
+      if (attempts >= maxAttempts) {
+        toast.error("Không thể tạo ID mới sau nhiều lần thử");
+        return null;
+      }
+    } while (checkIdExists(newId));
+
+    return newId;
+  }, [generateRandomId, checkIdExists]);
+
   const fetchGraphData = useCallback(async () => {
     setIsBackendGraphDataLoading(true);
     setIsError(false);
@@ -215,9 +246,11 @@ export default function CoordinateManagement({ navigation }) {
   );
 
   const openAddEditForm = (coordinate = null) => {
+    const newId = coordinate ? null : getUniqueId();
+
     setCurrentCoordinate(coordinate);
     setFormData({
-      node_id: coordinate?.node_id?.toString() || "",
+      node_id: coordinate?.node_id?.toString() || newId?.toString() || "",
       longitude: coordinate?.location?.coordinates[0]?.toString() || "",
       latitude: coordinate?.location?.coordinates[1]?.toString() || "",
       volprt: coordinate?.volprt?.toString() || "",
@@ -246,14 +279,23 @@ export default function CoordinateManagement({ navigation }) {
       toast.error("Node ID phải là số hợp lệ");
       return false;
     }
+
+    // Kiểm tra trùng lặp ID khi thêm mới
+    if (!currentCoordinate && checkIdExists(parseInt(formData.node_id))) {
+      toast.error("Node ID đã tồn tại trong hệ thống");
+      return false;
+    }
+
     if (!formData.longitude || isNaN(formData.longitude)) {
       toast.error("Kinh độ phải là số hợp lệ");
       return false;
     }
+
     if (!formData.latitude || isNaN(formData.latitude)) {
       toast.error("Vĩ độ phải là số hợp lệ");
       return false;
     }
+
     return true;
   };
 
@@ -519,16 +561,33 @@ export default function CoordinateManagement({ navigation }) {
                 </View>
               )}
               <Text style={styles.inputLabel}>Node ID</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Node ID*"
-                keyboardType="numeric"
-                value={formData.node_id}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, node_id: text })
-                }
-                editable={!currentCoordinate}
-              />
+              <View style={styles.idGenerationRow}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Node ID*"
+                  keyboardType="numeric"
+                  value={formData.node_id}
+                  onChangeText={(text) =>
+                    setFormData({ ...formData, node_id: text })
+                  }
+                  editable={!currentCoordinate}
+                />
+                {!currentCoordinate && (
+                  <TouchableWithoutFeedback
+                    onPress={() => {
+                      const newId = getUniqueId();
+                      if (newId) {
+                        setFormData({ ...formData, node_id: newId.toString() });
+                      }
+                    }}
+                  >
+                    <View style={styles.generateIdButton}>
+                      <MaterialIcons name="autorenew" size={20} color="#fff" />
+                      <Text style={styles.generateIdText}>Tạo ID mới</Text>
+                    </View>
+                  </TouchableWithoutFeedback>
+                )}
+              </View>
               <Text style={styles.inputLabel}>Tọa độ</Text>
               <View style={styles.coordRow}>
                 <View style={styles.nodeInputContainer}>
@@ -570,16 +629,7 @@ export default function CoordinateManagement({ navigation }) {
                   </View>
                 </TouchableWithoutFeedback>
               </View>
-              <Text style={styles.inputLabel}>Lưu lượng qua nút (số xe)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Volrpt"
-                keyboardType="numeric"
-                value={formData.volprt}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, volprt: text })
-                }
-              />
+
               <View style={styles.formButtons}>
                 <TouchableWithoutFeedback onPress={closeAddEditForm}>
                   <View style={[styles.formButton, styles.cancelButton]}>
@@ -639,9 +689,6 @@ export default function CoordinateManagement({ navigation }) {
                         <Text style={styles.coordSubtitle}>
                           [{coord.location?.coordinates[0] || 0},{" "}
                           {coord.location?.coordinates[1] || 0}]
-                        </Text>
-                        <Text style={styles.coordSubtitle}>
-                          Volrpt: {coord.volprt || "N/A"}
                         </Text>
                       </View>
                       <View style={styles.coordActions}>
@@ -1050,5 +1097,31 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     backgroundColor: "#F44336",
+  },
+  idGenerationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  generateIdButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 10,
+    marginBottom: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    backgroundColor: "#1E90FF",
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 5,
+    cursor: "pointer",
+  },
+  generateIdText: {
+    marginLeft: 8,
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
