@@ -89,18 +89,16 @@ const SimulationTrafficPanel = ({ data, onClose, onApplySimulation }) => {
           onChangeText={setSimulationName}
           placeholder="Nhập tên mô phỏng"
           placeholderTextColor="#999"
-          // Thêm style web để loại bỏ outline mặc định
-          {...(Platform.OS === "web" && { style: panelStyles.webInputOutline })}
         />
 
         {/* Tỷ lệ VC */}
-        <Text style={panelStyles.label}>Tỷ lệ VC (0-1):</Text>
+        <Text style={panelStyles.label}>Tỷ lệ VC - Chỉ số ùn tắc (0-2):</Text>
         <TextInput
           style={panelStyles.input}
           value={vc}
           onChangeText={(text) => setVc(text.replace(/[^0-9.]/g, ""))}
           keyboardType="numeric"
-          placeholder="0.00 - 1.00"
+          placeholder="0.00 - 2.00"
           placeholderTextColor="#999"
           {...(Platform.OS === "web" && { style: panelStyles.webInputOutline })}
         />
@@ -108,7 +106,7 @@ const SimulationTrafficPanel = ({ data, onClose, onApplySimulation }) => {
         {/* Loại sự cố (Combobox tùy chỉnh) */}
         <Text style={panelStyles.label}>Loại sự cố:</Text>
         <TouchableOpacity
-          style={[panelStyles.dropdownButton, panelStyles.webCursorPointer]}
+          style={[panelStyles.dropdownButton]}
           onPress={() => setIsIncidentPickerVisible(true)}
         >
           <Text style={panelStyles.dropdownButtonText}>{incident}</Text>
@@ -123,7 +121,7 @@ const SimulationTrafficPanel = ({ data, onClose, onApplySimulation }) => {
           animationType="fade"
         >
           <TouchableOpacity
-            style={[panelStyles.modalOverlay, panelStyles.webCursorPointer]}
+            style={[panelStyles.modalOverlay]}
             onPress={() => setIsIncidentPickerVisible(false)} // Close when tapping outside
           >
             <View style={panelStyles.pickerContainer}>
@@ -131,10 +129,7 @@ const SimulationTrafficPanel = ({ data, onClose, onApplySimulation }) => {
                 {validIncidents.map((type) => (
                   <TouchableOpacity
                     key={type}
-                    style={[
-                      panelStyles.pickerItem,
-                      panelStyles.webCursorPointer,
-                    ]}
+                    style={[panelStyles.pickerItem]}
                     onPress={() => {
                       setIncident(type);
                       setIsIncidentPickerVisible(false);
@@ -149,17 +144,14 @@ const SimulationTrafficPanel = ({ data, onClose, onApplySimulation }) => {
         </Modal>
 
         {/* Nút Áp dụng và Đóng */}
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
           <TouchableOpacity
-            style={[panelStyles.applyButton, panelStyles.webCursorPointer]}
+            style={[panelStyles.applyButton]}
             onPress={handleApply}
           >
             <Text style={panelStyles.applyButtonText}>Thêm Mô phỏng</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[panelStyles.closeButton, panelStyles.webCursorPointer]}
-            onPress={onClose}
-          >
+          <TouchableOpacity style={[panelStyles.closeButton]} onPress={onClose}>
             <Text style={panelStyles.closeButtonText}>Đóng</Text>
           </TouchableOpacity>
         </View>
@@ -318,9 +310,6 @@ const panelStyles = StyleSheet.create({
     fontWeight: "600",
   },
   // Style riêng cho web để thêm con trỏ pointer
-  webCursorPointer: {
-    cursor: "pointer",
-  },
 });
 
 export default SimulationTrafficPanel;

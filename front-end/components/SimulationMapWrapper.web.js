@@ -6,8 +6,8 @@ import React, {
   useState,
   useCallback,
 } from "react";
-import { View, StyleSheet } from "react-native";
-import Map, { useMap, MapRef } from "react-map-gl";
+import { View, StyleSheet, Text } from "react-native";
+import Map, { useMap, MapRef, Marker } from "react-map-gl";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
@@ -229,6 +229,64 @@ const MapWrapper = forwardRef(
       }
     }, [isMapReady, startCoords, endCoords, initialCenter, initialZoom]); // Removed 'map' from dependency array to avoid re-runs when map changes due to internal state, rely on mapRef.current?.getMap()
 
+    const isValidCoordinate = useCallback((coord) => {
+      if (!coord || !Array.isArray(coord) || coord.length < 2) return false;
+      const [lng, lat] = coord;
+      return (
+        typeof lng === "number" &&
+        typeof lat === "number" &&
+        lat >= -90 &&
+        lat <= 90 &&
+        lng >= -180 &&
+        lng <= 180
+      );
+    }, []);
+
+    const normalizeCoords = useCallback(
+      (coords) => {
+        if (!coords) return null;
+        if (isValidCoordinate(coords)) return coords;
+        if (coords.length >= 2) {
+          const reversed = [coords[1], coords[0]];
+          if (isValidCoordinate(reversed)) return reversed;
+        }
+        return null;
+      },
+      [isValidCoordinate]
+    );
+
+    const renderMarkers = useCallback(() => {
+      const normalizedStart = normalizeCoords(startCoords);
+      const normalizedEnd = normalizeCoords(endCoords);
+
+      return (
+        <>
+          {normalizedStart && isValidCoordinate(normalizedStart) && (
+            <Marker
+              longitude={normalizedStart[0]}
+              latitude={normalizedStart[1]}
+              anchor="bottom"
+            >
+              <View style={[styles.marker, styles.startMarker]}>
+                <Text style={styles.markerText}>📍</Text>
+              </View>
+            </Marker>
+          )}
+          {normalizedEnd && isValidCoordinate(normalizedEnd) && (
+            <Marker
+              longitude={normalizedEnd[0]}
+              latitude={normalizedEnd[1]}
+              anchor="bottom"
+            >
+              <View style={[styles.marker, styles.endMarker]}>
+                <Text style={styles.markerText}>🏁</Text>
+              </View>
+            </Marker>
+          )}
+        </>
+      );
+    }, [startCoords, endCoords, isValidCoordinate, normalizeCoords]);
+
     return (
       <View style={styles.container}>
         <Map
@@ -244,6 +302,7 @@ const MapWrapper = forwardRef(
           interactiveLayerIds={interactiveLayerIds}
           style={{ width: "100%", height: "100%" }}
         >
+          {renderMarkers()}
           {children}
         </Map>
       </View>

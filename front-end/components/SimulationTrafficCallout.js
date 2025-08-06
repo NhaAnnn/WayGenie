@@ -53,50 +53,48 @@ const SimulationTrafficCallout = ({ data, onClose, onConfigureSimulation }) => {
 
 const styles = StyleSheet.create({
   calloutContainer: {
-    // Để calloutContent tự quản lý kích thước và vị trí, container này chỉ đơn giản là chứa nó
     backgroundColor: "transparent",
-    alignItems: "center", // Giúp calloutContent căn giữa nếu nó nhỏ hơn
+    alignItems: "center",
     justifyContent: "center",
   },
   calloutContent: {
     backgroundColor: "white",
-    borderRadius: 12, // Bo góc mềm mại hơn
-    padding: 20, // Tăng padding để nội dung có không gian thở
-    paddingTop: 40, // Tăng padding top để có chỗ cho nút đóng
-    width: 220, // Tăng nhẹ chiều rộng để trông cân đối hơn
+    borderRadius: 12,
+    padding: 20,
+    paddingTop: 40,
+    width: 220,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 }, // Bóng đổ rõ hơn, tạo chiều sâu
-    shadowOpacity: 0.15, // Giảm nhẹ độ đậm của bóng
-    shadowRadius: 10, // Tăng bán kính bóng để mượt hơn
-    elevation: 8, // Elevation cho Android
-    position: "relative", // Quan trọng để nút đóng có thể absolute
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+    position: "relative",
   },
   title: {
-    fontSize: 16, // Tăng cỡ chữ tiêu đề
+    fontSize: 16,
     fontWeight: "bold",
-    marginBottom: 15, // Tăng khoảng cách dưới tiêu đề
-    color: "#2c3e50", // Màu chữ đậm hơn
-    textAlign: "center", // Căn giữa tiêu đề
+    marginBottom: 15,
+    color: "#2c3e50",
+    textAlign: "center",
   },
   detail: {
-    fontSize: 14, // Tăng cỡ chữ chi tiết
-    color: "#4a4a4a", // Màu chữ chi tiết tối hơn, dễ đọc hơn
-    marginBottom: 8, // Tăng khoảng cách giữa các dòng chi tiết
-    lineHeight: 20, // Đảm bảo khoảng cách dòng đủ lớn
+    fontSize: 14,
+    color: "#4a4a4a",
+    marginBottom: 8,
+    lineHeight: 20,
   },
   buttonWrapper: {
-    // New style for button wrapper
-    marginTop: 15, // Khoảng cách từ chi tiết đến nút
-    alignItems: "center", // Căn giữa nút
+    marginTop: 15,
+    alignItems: "center",
   },
   simulateButton: {
-    backgroundColor: "#1a73e8", // Màu xanh dương Google Material, nổi bật hơn
-    paddingVertical: 12, // Tăng padding dọc
-    paddingHorizontal: 25, // Tăng padding ngang
-    borderRadius: 8, // Bo góc mềm mại
+    backgroundColor: "#1a73e8",
+    paddingVertical: 12,
+    paddingHorizontal: 25,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    // Thêm bóng cho nút
+
     shadowColor: "#1a73e8",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -105,21 +103,21 @@ const styles = StyleSheet.create({
   },
   simulateButtonText: {
     color: "white",
-    fontSize: 15, // Cỡ chữ lớn hơn
-    fontWeight: "bold", // Đậm hơn
+    fontSize: 15,
+    fontWeight: "bold",
   },
   closeButton: {
     position: "absolute",
-    top: 10, // Dịch xuống một chút
-    right: 10, // Dịch vào một chút
-    backgroundColor: "red", // Màu xám nhẹ nhàng hơn, không quá chói
-    width: 28, // Kích thước lớn hơn một chút
+    top: 10,
+    right: 10,
+    backgroundColor: "red",
+    width: 28,
     height: 28,
-    borderRadius: 14, // Giữ tròn
+    borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
     zIndex: 1,
-    // Thêm bóng nhẹ cho nút đóng
+
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -128,8 +126,8 @@ const styles = StyleSheet.create({
   },
   closeButtonText: {
     fontWeight: "bold",
-    color: "white", // Màu chữ xám đậm hơn cho dấu X
-    fontSize: 16, // Cỡ chữ lớn hơn cho dấu X
+    color: "white",
+    fontSize: 16,
   },
 });
 

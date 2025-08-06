@@ -5,7 +5,10 @@ const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs").promises;
+const cron = require("node-cron");
+
 const { processData } = require("./utils/getDataRoute");
+const { fetchAllHanoiAQIData } = require("./fetchAQIData");
 
 // Tải biến môi trường từ secrets.env
 dotenv.config({ path: "./secrets.env" });
@@ -14,11 +17,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 
-// Middleware
+// Middleware và các routes khác
 app.use(cors({ origin: "http://localhost:8081" }));
 app.use(express.json());
 
-// Cấu hình Multer để lưu file tạm thời
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
     const uploadDir = path.join(__dirname, "uploads");
@@ -30,7 +32,7 @@ const storage = multer.diskStorage({
     }
   },
   filename: (req, file, cb) => {
-    cb(null, file.originalname); // Giữ nguyên tên file
+    cb(null, file.originalname);
   },
 });
 
@@ -48,19 +50,18 @@ const upload = multer({
       );
     }
   },
-  limits: { fileSize: 100 * 1024 * 1024 }, // Giới hạn 100MB
+  limits: { fileSize: 100 * 1024 * 1024 },
 });
 
-// Định nghĩa các routes
 const coordinateRoutes = require("./routes/coordinates");
 const routeRoutes = require("./routes/routes");
 const authRoutes = require("./routes/auth");
 const aqiRoutes = require("./routes/aqis");
-// const authRoutes = require("./routes/auth");
 const simulateRoutes = require("./routes/simulate");
+const scenario = require("./routes/scenarios");
 const findWay = require("./routes/findWay");
-
 const forgotPasswordRoutes = require("./routes/forgotPassword");
+
 app.use("/api/coordinates", coordinateRoutes);
 app.use("/api/routes", routeRoutes);
 app.use("/api/auth", authRoutes);
@@ -68,9 +69,9 @@ app.use("/api/aqis", aqiRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/simulate", simulateRoutes);
 app.use("/api/find-way", findWay);
+app.use("/api/scenarios", scenario);
 app.use("/api/forgot", forgotPasswordRoutes);
 
-// API nhận file upload
 app.post(
   "/api/upload",
   upload.fields([
@@ -83,7 +84,6 @@ app.post(
       console.log("Files received:", JSON.stringify(req.files, null, 2));
       const files = req.files;
 
-      // Kiểm tra sự tồn tại của nodeFile, linkFile và shapefile
       if (!files.nodeFile || !files.linkFile || !files.shapefile) {
         return res.status(400).json({
           error:
@@ -91,7 +91,6 @@ app.post(
         });
       }
 
-      // Kiểm tra số lượng file shapefile
       if (files.shapefile.length !== 5) {
         return res.status(400).json({
           error:
@@ -104,7 +103,6 @@ app.post(
       );
       console.log("Shapefile names:", shapefileFiles);
 
-      // Kiểm tra sự hiện diện của tất cả 5 file shapefile bắt buộc
       const requiredShapefileExts = [".shp", ".shx", ".dbf", ".prj", ".ctf"];
       const missingExts = requiredShapefileExts.filter(
         (ext) => !shapefileFiles.some((f) => f.endsWith(ext))
@@ -118,7 +116,6 @@ app.post(
         });
       }
 
-      // Log file shapefile
       console.log(
         "Tất cả các file shapefile cần thiết đã được tải lên:",
         shapefileFiles
@@ -138,17 +135,14 @@ app.post(
         ? path.join(BASE_DATA_PATH, shpFile.filename)
         : null;
 
-      // Kiểm tra trước khi gọi processData
       if (!nodeFilePath || !linkFilePath || !shapeFilePath) {
         return res.status(400).json({
           error: `Thiếu đường dẫn file: nodeFile=${nodeFilePath}, linkFile=${linkFilePath}, shapeFile=${shapeFilePath}`,
         });
       }
 
-      // Gọi processData với các đường dẫn file
       await processData(nodeFilePath, linkFilePath, shapeFilePath);
 
-      // Xóa file tạm
       await Promise.all([
         fs
           .unlink(nodeFilePath)
@@ -178,17 +172,14 @@ app.post(
   }
 );
 
-// Route mặc định (Health check)
 app.get("/", (req, res) => {
   res.send("WayGenie Backend API đang chạy!");
 });
 
-// Xử lý lỗi 404
 app.use((req, res, next) => {
   res.status(404).json({ message: "API Endpoint không tìm thấy" });
 });
 
-// Xử lý lỗi tổng quát
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res
@@ -196,11 +187,25 @@ app.use((err, req, res, next) => {
     .json({ message: "Có lỗi xảy ra ở máy chủ!", error: err.message });
 });
 
-// Kết nối MongoDB trước khi khởi động server
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
     console.log("Kết nối MongoDB thành công!");
+
+    // Chạy lần đầu tiên khi server khởi động
+    fetchAllHanoiAQIData();
+
+    // 3. Lên lịch chạy hàng ngày
+    // Biểu thức cron: "0 2 * * *" nghĩa là chạy vào phút 0, giờ 2 (2 giờ sáng) mỗi ngày
+    cron.schedule("0 2 * * *", () => {
+      console.log(
+        "Đang chạy tác vụ lấy dữ liệu AQI theo lịch trình hàng ngày..."
+      );
+      fetchAllHanoiAQIData()
+        .then(() => console.log("Hoàn thành tác vụ fetch dữ liệu AQI."))
+        .catch((err) => console.error("Lỗi trong tác vụ fetch AQI:", err));
+    });
+
     app.listen(PORT, () => {
       console.log(`Server đang chạy trên cổng ${PORT}`);
     });

@@ -18,8 +18,8 @@ import AnnouncementsScreen from "../screens/admin/AnnouncementsScreen";
 import SimulatedTrafficScreen from "../screens/admin/SimulatedTrafficScreen";
 import ConfigureRouteScreen from "../screens/admin/ConfigureRouteScreen";
 import PersonalInfoScreen from "../screens/user/PersonalInfoScreen";
-import StationManagement from "../screens/admin/StationManagement";
-import CordinateManagement from "../screens/admin/CordinateManagement";
+import StationManagement from "../screens/admin/StationManagement.web";
+import CordinateManagement from "../screens/admin/CordinateManagement.web";
 import RouteManagement from "../screens/admin/RouteManagement.web";
 import UploadManagement from "../screens/admin/UploadManagement";
 import ForgotPassword from "../screens/ForgotPassword";
@@ -139,7 +139,7 @@ export default function AppNavigator() {
   return (
     <>
       {authToken ? (
-        userRole === "admin" ? (
+        userRole === "admin" && Platform.OS === "web" ? (
           <AdminStack />
         ) : Platform.OS === "web" ? (
           <WebStack />

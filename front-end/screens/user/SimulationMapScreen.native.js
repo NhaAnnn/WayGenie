@@ -26,13 +26,13 @@ import AirQualityCallout from "../../components/SimulationAirQualityCallout";
 import RouteCallout from "../../components/SimulationRouteCallout";
 import SimulationTrafficCallout from "../../components/SimulationTrafficCallout";
 import SimulationTrafficPanel from "../../components/SimulationTrafficPanel";
+import SimulationAqiPanel from "../../components/SimulationAqiPanel.js";
 import {
   MAPBOX_PUBLIC_ACCESS_TOKEN,
   BACKEND_API_BASE_URL,
 } from "../../secrets.js";
 import { useAuth } from "../../context/AuthContext";
 import axios from "axios";
-import SimulationAqiPanel from "../../components/SimulationAqiPanel.js";
 
 const { width, height } = Dimensions.get("window");
 
@@ -42,6 +42,7 @@ const COORDINATES_API_URL = `${BACKEND_API_BASE_URL}/coordinates`;
 const ROUTES_API_URL = `${BACKEND_API_BASE_URL}/routes`;
 const AIR_QUALITY_API_URL = `${BACKEND_API_BASE_URL}/aqis`;
 const SIMULATIONS_API_URL = `${BACKEND_API_BASE_URL}/simulate`;
+const SCENARIOS_API_URL = `${BACKEND_API_BASE_URL}/scenarios`;
 
 const SimulationMapScreen = () => {
   const [loading, setLoading] = useState(true);
@@ -59,6 +60,7 @@ const SimulationMapScreen = () => {
   const [allCoordinates, setAllCoordinates] = useState([]);
   const [allRoutes, setAllRoutes] = useState([]);
   const [rawAirQualityData, setRawAirQualityData] = useState([]);
+  const [activeScenarioData, setActiveScenarioData] = useState(null);
   const [simulatedAqiData, setSimulatedAqiData] = useState([]);
   const [simulatedTrafficData, setSimulatedTrafficData] = useState(new Map());
   const [trafficData, setTrafficData] = useState({
@@ -83,7 +85,7 @@ const SimulationMapScreen = () => {
   const [selectedTrafficData, setSelectedTrafficData] = useState(null);
   const [isTrafficPanelVisible, setTrafficPanelVisible] = useState(false);
   const [isAqiPanelVisible, setAqiPanelVisible] = useState(false);
-  const { authToken, logout } = useAuth();
+  const { authToken } = useAuth();
 
   const mapRef = useRef(null);
 
@@ -94,6 +96,54 @@ const SimulationMapScreen = () => {
     });
     return map;
   }, [allCoordinates]);
+
+  const calculateMidPoint = (coordinates) => {
+    if (!coordinates || coordinates.length < 2) {
+      return coordinates[0] || [0, 0];
+    }
+
+    // Tính khoảng cách Euclidean giữa hai điểm
+    const calculateDistance = (point1, point2) => {
+      const [lon1, lat1] = point1;
+      const [lon2, lat2] = point2;
+      const dx = lon2 - lon1;
+      const dy = lat2 - lat1;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    // Tính tổng chiều dài và lưu khoảng cách từng đoạn
+    let totalLength = 0;
+    const segmentLengths = [];
+    for (let i = 0; i < coordinates.length - 1; i++) {
+      const distance = calculateDistance(coordinates[i], coordinates[i + 1]);
+      segmentLengths.push(distance);
+      totalLength += distance;
+    }
+
+    const targetLength = totalLength / 2;
+    let accumulatedLength = 0;
+
+    // Tìm đoạn chứa điểm giữa
+    for (let i = 0; i < segmentLengths.length; i++) {
+      accumulatedLength += segmentLengths[i];
+      if (accumulatedLength >= targetLength) {
+        const segmentStart = coordinates[i];
+        const segmentEnd = coordinates[i + 1];
+        const segmentLength = segmentLengths[i];
+        const remainingLength =
+          targetLength - (accumulatedLength - segmentLength);
+
+        // Nội suy tuyến tính
+        const ratio = remainingLength / segmentLength;
+        const lon = segmentStart[0] + ratio * (segmentEnd[0] - segmentStart[0]);
+        const lat = segmentStart[1] + ratio * (segmentEnd[1] - segmentStart[1]);
+        return [lon, lat];
+      }
+    }
+
+    // Dự phòng
+    return coordinates[Math.floor(coordinates.length / 2)] || coordinates[0];
+  };
 
   useEffect(() => {
     const checkMapRef = setInterval(() => {
@@ -156,19 +206,23 @@ const SimulationMapScreen = () => {
         routesResponse,
         airQualityResponse,
         simulationsResponse,
+        scenariosResponse,
       ] = await Promise.allSettled([
-        fetch(COORDINATES_API_URL),
-        fetch(ROUTES_API_URL),
-        fetch(AIR_QUALITY_API_URL),
+        axios.get(COORDINATES_API_URL, getAuthHeaders()),
+        axios.get(ROUTES_API_URL, getAuthHeaders()),
+        axios.get(AIR_QUALITY_API_URL, getAuthHeaders()),
         axios.get(SIMULATIONS_API_URL, getAuthHeaders()),
+        axios.get(SCENARIOS_API_URL, getAuthHeaders()),
       ]);
 
       let errorOccurred = false;
       let errorDetails = [];
 
-      if (coordsResponse.status === "fulfilled" && coordsResponse.value.ok) {
-        const coordsData = await coordsResponse.value.json();
-        setAllCoordinates(coordsData);
+      if (
+        coordsResponse.status === "fulfilled" &&
+        coordsResponse.value.status === 200
+      ) {
+        setAllCoordinates(coordsResponse.value.data);
       } else {
         errorOccurred = true;
         errorDetails.push(
@@ -180,9 +234,11 @@ const SimulationMapScreen = () => {
         );
       }
 
-      if (routesResponse.status === "fulfilled" && routesResponse.value.ok) {
-        const routesData = await routesResponse.value.json();
-        setAllRoutes(routesData);
+      if (
+        routesResponse.status === "fulfilled" &&
+        routesResponse.value.status === 200
+      ) {
+        setAllRoutes(routesResponse.value.data);
       } else {
         errorOccurred = true;
         errorDetails.push(
@@ -196,10 +252,9 @@ const SimulationMapScreen = () => {
 
       if (
         airQualityResponse.status === "fulfilled" &&
-        airQualityResponse.value.ok
+        airQualityResponse.value.status === 200
       ) {
-        const aqData = await airQualityResponse.value.json();
-        setRawAirQualityData(aqData);
+        setRawAirQualityData(airQualityResponse.value.data);
       } else {
         errorOccurred = true;
         errorDetails.push(
@@ -289,6 +344,33 @@ const SimulationMapScreen = () => {
         );
       }
 
+      if (
+        scenariosResponse.status === "fulfilled" &&
+        scenariosResponse.value.status === 200
+      ) {
+        let scenarioData = scenariosResponse.value.data;
+        if (scenarioData && typeof scenarioData === "object") {
+          scenarioData = Array.isArray(scenarioData)
+            ? scenarioData
+            : scenarioData.scenarios || [];
+        } else {
+          scenarioData = [];
+        }
+        const activeScenario = scenarioData.find(
+          (scenario) => scenario.is_active
+        );
+        setActiveScenarioData(activeScenario || null);
+      } else {
+        errorOccurred = true;
+        errorDetails.push(
+          `Scenarios: ${
+            scenariosResponse.reason ||
+            scenariosResponse.value?.statusText ||
+            "Unknown error"
+          }`
+        );
+      }
+
       if (errorOccurred) {
         setIsError(true);
         setErrorMessage(`Lỗi tải dữ liệu: ${errorDetails.join("; ")}`);
@@ -300,7 +382,7 @@ const SimulationMapScreen = () => {
     } finally {
       setIsBackendGraphDataLoading(false);
     }
-  }, []);
+  }, [authToken]);
 
   useEffect(() => {
     if (
@@ -335,27 +417,105 @@ const SimulationMapScreen = () => {
       !isError &&
       !isBackendGraphDataLoading
     ) {
-      const newTrafficFeatures = allRoutes
-        .map((route) => {
-          const fromCoord = coordinatesMap.get(route.FROMNODENO);
-          const toCoord = coordinatesMap.get(route.TONODENO);
+      let finalAqiData = [...rawAirQualityData];
+      let finalTrafficData = allRoutes.map((route) => ({
+        ...route,
+        VC: route.VC,
+        incident: null,
+      }));
+
+      if (activeScenarioData) {
+        const scenarioAqiSimulations = activeScenarioData.simulations
+          .filter((sim) => sim.simulation_type === "aqi")
+          .map((sim) => {
+            const data = sim.simulation_data;
+            return {
+              _id: sim._id,
+              simulation_name: sim.simulation_name,
+              stationId: data.stationId,
+              lon: parseFloat(data.lon),
+              lat: parseFloat(data.lat),
+              pm25: parseFloat(data.pm25),
+              pm10: parseFloat(data.pm10 || 0),
+              co: parseFloat(data.co || 0),
+              no2: parseFloat(data.no2 || 0),
+              so2: parseFloat(data.so2 || 0),
+              o3: parseFloat(data.o3 || 0),
+              aqi: parseFloat(data.aqi),
+              radiusKm: parseFloat(data.radiusKm || 1),
+              location: {
+                type: "Point",
+                coordinates: [parseFloat(data.lon), parseFloat(data.lat)],
+              },
+              isSimulated: true,
+            };
+          });
+        const scenarioTrafficSimulations = new Map();
+        activeScenarioData.simulations
+          .filter((sim) => sim.simulation_type === "traffic")
+          .forEach((sim) => {
+            const data = sim.simulation_data;
+            const trafficImpact = {
+              _id: sim._id,
+              simulation_name: sim.simulation_name,
+              fromNode: data.fromNode,
+              toNode: data.toNode,
+              VC: parseFloat(data.VC),
+              incident: data.incident,
+              isBlocked: data.isBlocked || false,
+              isSimulated: true,
+            };
+            scenarioTrafficSimulations.set(data.segmentKey, trafficImpact);
+            scenarioTrafficSimulations.set(
+              data.reverseSegmentKey,
+              trafficImpact
+            );
+          });
+        finalAqiData = [...finalAqiData, ...scenarioAqiSimulations];
+        finalTrafficData = finalTrafficData.map((route) => {
+          const segmentKey = `${route.FROMNODENO}-${route.TONODENO}`;
+          const reverseSegmentKey = `${route.TONODENO}-${route.FROMNODENO}`;
+          const simulatedTraffic =
+            scenarioTrafficSimulations.get(segmentKey) ||
+            scenarioTrafficSimulations.get(reverseSegmentKey);
+          return simulatedTraffic
+            ? {
+                ...route,
+                VC: simulatedTraffic.VC,
+                incident: simulatedTraffic.incident,
+              }
+            : route;
+        });
+      } else {
+        finalAqiData = [...finalAqiData, ...simulatedAqiData];
+        finalTrafficData = finalTrafficData.map((route) => {
           const segmentKey = `${route.FROMNODENO}-${route.TONODENO}`;
           const reverseSegmentKey = `${route.TONODENO}-${route.FROMNODENO}`;
           const simulatedTraffic =
             simulatedTrafficData.get(segmentKey) ||
             simulatedTrafficData.get(reverseSegmentKey);
+          return simulatedTraffic
+            ? {
+                ...route,
+                VC: simulatedTraffic.VC,
+                incident: simulatedTraffic.incident,
+              }
+            : route;
+        });
+      }
+
+      const newTrafficFeatures = finalTrafficData
+        .map((route) => {
+          const fromCoord = coordinatesMap.get(route.FROMNODENO);
+          const toCoord = coordinatesMap.get(route.TONODENO);
+          const segmentKey = `${route.FROMNODENO}-${route.TONODENO}`;
+          const reverseSegmentKey = `${route.TONODENO}-${route.FROMNODENO}`;
 
           const properties = {
             id: route.linkNo,
-            VC: simulatedTraffic ? simulatedTraffic.VC : route.VC,
-            status: simulatedTraffic
-              ? simulatedTraffic.incident !== "Không"
-                ? simulatedTraffic.incident.toLowerCase()
-                : simulatedTraffic.VC <= 0.6
-                ? "smooth"
-                : simulatedTraffic.VC <= 0.8
-                ? "moderate"
-                : "congested"
+            VC: route.VC,
+            status: route.incident
+              ? route.incident.toLowerCase()
               : route.VC <= 0.6
               ? "smooth"
               : route.VC <= 0.8
@@ -364,18 +524,12 @@ const SimulationMapScreen = () => {
             fromNode: route.FROMNODENO,
             toNode: route.TONODENO,
             length: route.LENGTH || 0,
-            incidentType: simulatedTraffic ? simulatedTraffic.incident : null,
-            incidentDescription: simulatedTraffic
-              ? simulatedTraffic.incident !== "Không"
-                ? `${simulatedTraffic.incident} (sim)`
-                : null
+            incidentType: route.incident || null,
+            incidentDescription: route.incident
+              ? `${route.incident} (sim)`
               : null,
-            incidentSeverity: simulatedTraffic
-              ? simulatedTraffic.incident !== "Không"
-                ? "high"
-                : null
-              : null,
-            isSimulated: !!simulatedTraffic,
+            incidentSeverity: route.incident ? "high" : null,
+            isSimulated: !!route.incident,
           };
 
           if (
@@ -388,7 +542,13 @@ const SimulationMapScreen = () => {
               properties,
               geometry: route.geometry,
             };
-          } else if (fromCoord && toCoord && route.VC !== undefined) {
+          } else if (
+            fromCoord &&
+            toCoord &&
+            fromCoord.location?.coordinates &&
+            toCoord.location?.coordinates &&
+            route.VC !== undefined
+          ) {
             return {
               type: "Feature",
               properties,
@@ -401,6 +561,7 @@ const SimulationMapScreen = () => {
               },
             };
           }
+          console.warn("Invalid traffic feature:", route);
           return null;
         })
         .filter(Boolean);
@@ -410,7 +571,7 @@ const SimulationMapScreen = () => {
         features: newTrafficFeatures,
       });
 
-      const newAirQualityFeatures = [...rawAirQualityData, ...simulatedAqiData]
+      const newAirQualityFeatures = finalAqiData
         .filter((aqData) => {
           if (!aqData.location?.coordinates) {
             console.warn(
@@ -480,10 +641,6 @@ const SimulationMapScreen = () => {
           };
         });
 
-      console.log(
-        `Processed ${newAirQualityFeatures.length} air quality features`
-      );
-
       setAirQualityData({
         type: "FeatureCollection",
         features: newAirQualityFeatures,
@@ -496,12 +653,46 @@ const SimulationMapScreen = () => {
     allCoordinates,
     allRoutes,
     rawAirQualityData,
+    activeScenarioData,
     simulatedAqiData,
     simulatedTrafficData,
     isError,
     isBackendGraphDataLoading,
     coordinatesMap,
   ]);
+
+  const modeIconFeatures = useMemo(() => {
+    return routeFeatures.flatMap((featureCollection) =>
+      featureCollection.features
+        .filter(
+          (f) =>
+            f.geometry.type === "LineString" && f.properties?.recommendedMode
+        )
+        .map((routeFeature) => {
+          const coordinates = routeFeature.geometry.coordinates;
+          const midPoint = calculateMidPoint(coordinates);
+
+          if (midPoint) {
+            return {
+              type: "Feature",
+              properties: {
+                id: `mode-icon-${Math.random().toString(36).substr(2, 9)}`,
+                recommendedMode: routeFeature.properties.recommendedMode,
+                routeId: routeFeature.properties.routeId,
+                isHighlighted:
+                  routeFeature.properties.routeId === isHighlightedRouteId,
+              },
+              geometry: {
+                type: "Point",
+                coordinates: midPoint,
+              },
+            };
+          }
+          return null;
+        })
+        .filter(Boolean)
+    );
+  }, [routeFeatures, isHighlightedRouteId]);
 
   useEffect(() => {
     if (routeFeatures.length > 0) {
@@ -513,20 +704,14 @@ const SimulationMapScreen = () => {
           )
           .map((routeFeature) => {
             const coordinates = routeFeature.geometry.coordinates;
-            let midPoint = null;
-            if (coordinates.length > 1) {
-              const midIndex = Math.floor(coordinates.length / 2);
-              midPoint = coordinates[midIndex];
-            } else if (coordinates.length === 1) {
-              midPoint = coordinates[0];
-            }
+            const midPoint = calculateMidPoint(coordinates);
 
             if (midPoint) {
               return {
                 type: "Feature",
                 properties: {
                   id: `label-${routeFeature.properties.routeId}`,
-                  labelText: `PT: ${routeFeature.properties.recommendedMode}`,
+                  // labelText: `PT: ${routeFeature.properties.recommendedMode}`,
                   routeId: routeFeature.properties.routeId,
                   isHighlighted:
                     routeFeature.properties.routeId === isHighlightedRouteId,
@@ -561,15 +746,14 @@ const SimulationMapScreen = () => {
     (
       startCoords,
       endCoords,
-      allRoutesGeoJSON, // This is an Array<FeatureCollection>
+      allRoutesGeoJSON,
       selectedRouteId,
-      selectedRoutingCriterionId // This parameter is actually not needed here anymore for feature processing, but kept for consistency
+      selectedRoutingCriterionId
     ) => {
       console.log(
         "Received allRoutesGeoJSON in handleRouteSelected:",
         JSON.stringify(allRoutesGeoJSON, null, 2)
-      ); // Add this log
-
+      );
       setHighlightedRouteId(selectedRouteId);
       setRouteStartCoords(startCoords);
       setEndCoords(endCoords);
@@ -586,7 +770,6 @@ const SimulationMapScreen = () => {
       let processedRouteFeatures = [];
       if (allRoutesGeoJSON && allRoutesGeoJSON.length > 0) {
         allRoutesGeoJSON.forEach((featureCollection) => {
-          // 'featureCollection' is an object like { type: "FeatureCollection", features: [...] }
           if (
             !featureCollection ||
             !Array.isArray(featureCollection.features)
@@ -595,22 +778,18 @@ const SimulationMapScreen = () => {
               "Skipping invalid FeatureCollection in handleRouteSelected:",
               featureCollection
             );
-            return; // Skip this item if it's not a valid FeatureCollection
+            return;
           }
 
           featureCollection.features.forEach((feature) => {
-            // All features are processed here. The necessary properties (like healthScore,
-            // recommendedMode, pollution) should already be present in feature.properties
-            // because fetchRoute already mapped them into the 'features' array.
             processedRouteFeatures.push({
               ...feature,
               properties: {
                 ...feature.properties,
-                // Ensure routeId and isHighlighted are correctly set
-                routeId: feature.properties.routeId || featureCollection.id, // Use featureCollection.id if feature.properties.routeId isn't there
+                routeId: feature.properties.routeId || featureCollection.id,
                 isHighlighted:
                   (feature.properties.routeId || featureCollection.id) ===
-                  selectedRouteId, // Check against feature's own routeId or the collection's ID
+                  selectedRouteId,
                 recommendedMode: feature.properties.recommendedMode || null,
                 healthScore: feature.properties.healthScore || -1,
               },
@@ -624,14 +803,13 @@ const SimulationMapScreen = () => {
         console.log(
           "Final features for map drawing (allFeatures in handleRouteSelected):",
           JSON.stringify(allFeatures, null, 2)
-        ); // Add this log
+        );
 
         setRouteFeatures([
           { type: "FeatureCollection", features: allFeatures },
         ]);
 
         if (mapRef.current?.fitBounds && mapRef.current?.calculateBoundingBox) {
-          // Ensure that allFeatures is not empty before trying to calculate bounds
           if (allFeatures.length > 0) {
             const bounds = mapRef.current.calculateBoundingBox(allFeatures);
             if (bounds) {
@@ -686,9 +864,11 @@ const SimulationMapScreen = () => {
       if (e.features && e.features.length > 0) {
         const tappedFeature = e.features[0];
         if (tappedFeature.properties?.routeId === isHighlightedRouteId) {
+          const coordinates = tappedFeature.geometry.coordinates;
+          const midPoint = calculateMidPoint(coordinates);
           setSelectedRouteData({
             ...tappedFeature.properties,
-            coordinates: tappedFeature.geometry.coordinates[0],
+            coordinates: midPoint,
           });
           setSelectedAqiData(null);
           setSelectedTrafficData(null);
@@ -707,8 +887,7 @@ const SimulationMapScreen = () => {
       if (layersVisibility.traffic && e.features && e.features.length > 0) {
         const tappedFeature = e.features[0];
         const coordinates = tappedFeature.geometry.coordinates;
-        const midPoint =
-          coordinates[Math.floor(coordinates.length / 2)] || coordinates[0];
+        const midPoint = calculateMidPoint(coordinates);
         setSelectedTrafficData({
           ...tappedFeature.properties,
           coordinates: midPoint,
@@ -750,16 +929,16 @@ const SimulationMapScreen = () => {
     }
   }, [selectedAqiData, selectedRouteData, selectedTrafficData]);
 
-  const getAuthHeaders = () => {
+  const getAuthHeaders = useCallback(() => {
     if (!authToken) {
-      throw new Error("No token found");
+      return {};
     }
     return {
       headers: {
         Authorization: `Bearer ${authToken}`,
       },
     };
-  };
+  }, [authToken]);
 
   const handleApplyAqiSimulation = useCallback(
     async ({
@@ -792,9 +971,11 @@ const SimulationMapScreen = () => {
         simulationName,
       };
       try {
-        await axios.post(`${BACKEND_API_BASE_URL}/simulate/aqis`, payload, {
-          headers: getAuthHeaders(),
-        });
+        await axios.post(
+          `${BACKEND_API_BASE_URL}/simulate/aqis`,
+          payload,
+          getAuthHeaders()
+        );
         Alert.alert(
           "Thành công",
           "Mô phỏng chất lượng không khí đã được thêm."
@@ -809,7 +990,7 @@ const SimulationMapScreen = () => {
       }
       setAqiPanelVisible(false);
     },
-    [fetchGraphData]
+    [fetchGraphData, getAuthHeaders]
   );
 
   const handleApplyTrafficSimulation = useCallback(
@@ -826,9 +1007,11 @@ const SimulationMapScreen = () => {
         simulationName,
       };
       try {
-        await axios.post(`${BACKEND_API_BASE_URL}/simulate/traffic`, payload, {
-          headers: getAuthHeaders(),
-        });
+        await axios.post(
+          `${BACKEND_API_BASE_URL}/simulate/traffic`,
+          payload,
+          getAuthHeaders()
+        );
         Alert.alert("Thành công", "Mô phỏng giao thông đã được thêm.");
         fetchGraphData();
       } catch (apiError) {
@@ -840,7 +1023,7 @@ const SimulationMapScreen = () => {
       }
       setTrafficPanelVisible(false);
     },
-    [fetchGraphData]
+    [fetchGraphData, getAuthHeaders]
   );
 
   const handleSimulationApplied = useCallback(() => {
@@ -896,6 +1079,26 @@ const SimulationMapScreen = () => {
                       />
                     </MapboxGL.ShapeSource>
                   )}
+                {layersVisibility.traffic &&
+                  trafficData.features
+                    .filter(
+                      (feature) => feature.properties.status === "đóng đường"
+                    )
+                    .map((feature) => {
+                      const coordinates = feature.geometry.coordinates;
+                      const midPoint = calculateMidPoint(coordinates);
+                      return (
+                        <MapboxGL.MarkerView
+                          key={`closed-road-${feature.properties.id}`}
+                          coordinate={midPoint}
+                          anchor={{ x: 0.5, y: 0.5 }}
+                        >
+                          <View style={styles.closedRoadIcon}>
+                            <Text style={styles.closedRoadIconText}>🛑</Text>
+                          </View>
+                        </MapboxGL.MarkerView>
+                      );
+                    })}
                 {layersVisibility.airQuality &&
                   airQualityData.features.length > 0 && (
                     <MapboxGL.ShapeSource
@@ -980,7 +1183,7 @@ const SimulationMapScreen = () => {
                           -1,
                           "gray",
                           0,
-                          "red",
+                          "blue",
                           50,
                           "orange",
                           100,
@@ -1060,6 +1263,32 @@ const SimulationMapScreen = () => {
                       </MapboxGL.MarkerView>
                     )}
                   </MapboxGL.ShapeSource>
+                ))}
+                {modeIconFeatures.map((feature) => (
+                  <MapboxGL.MarkerView
+                    key={feature.properties.id}
+                    coordinate={feature.geometry.coordinates}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                  >
+                    <View
+                      style={[
+                        styles.modeIconPopup,
+                        feature.properties.isHighlighted &&
+                          styles.modeIconPopupHighlighted,
+                      ]}
+                    >
+                      <Text style={styles.modeIconText}>
+                        {feature.properties.recommendedMode === "walking" &&
+                          "🚶"}
+                        {feature.properties.recommendedMode === "cycling" &&
+                          "🚴"}
+                        {feature.properties.recommendedMode === "driving" &&
+                          "🚗"}
+                        {feature.properties.recommendedMode === "motorcycle" &&
+                          "🏍️"}
+                      </Text>
+                    </View>
+                  </MapboxGL.MarkerView>
                 ))}
                 {routeLabelData.features.length > 0 && (
                   <MapboxGL.ShapeSource
@@ -1204,11 +1433,11 @@ const styles = StyleSheet.create({
       "tai nạn",
       "#ff0000",
       "đóng đường",
-      "black",
+      "#ff0000",
       "gray",
     ],
-    lineWidth: ["match", ["get", "status"], "tai nạn", 7, "đóng đường", 8, 5],
-    lineOpacity: 0.7,
+    lineWidth: ["match", ["get", "status"], "tai nạn", 7, "đóng đường", 10, 5],
+    lineOpacity: 0.8,
   },
   airQualityLayer: {
     circleColor: [
@@ -1371,6 +1600,39 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  closedRoadIcon: {
+    backgroundColor: "#ff0000",
+    borderRadius: 15,
+    width: 30,
+    height: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+    opacity: 0.9,
+  },
+  closedRoadIconText: {
+    fontSize: 18,
+    color: "#fff",
+  },
+  modeIconPopup: {
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    borderRadius: 15,
+    width: 30,
+    height: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#3498db",
+    opacity: 0.9,
+  },
+  modeIconPopupHighlighted: {
+    borderColor: "#ffffff",
+    backgroundColor: "rgba(255, 255, 255, 1)",
+  },
+  modeIconText: {
+    fontSize: 18,
   },
 });
 

@@ -33,6 +33,7 @@ const COORDINATES_API_URL = `${BACKEND_API_BASE_URL}/coordinates`;
 const ROUTES_API_URL = `${BACKEND_API_BASE_URL}/routes`;
 const AIR_QUALITY_API_URL = `${BACKEND_API_BASE_URL}/aqis`;
 const SIMULATIONS_API_URL = `${BACKEND_API_BASE_URL}/simulate`;
+const SCENARIOS_API_URL = `${BACKEND_API_BASE_URL}/scenarios`;
 
 const SimulationMapScreen = () => {
   const [loading, setLoading] = useState(true);
@@ -50,6 +51,7 @@ const SimulationMapScreen = () => {
   const [allCoordinates, setAllCoordinates] = useState([]);
   const [allRoutes, setAllRoutes] = useState([]);
   const [rawAirQualityData, setRawAirQualityData] = useState([]);
+  const [activeScenarioData, setActiveScenarioData] = useState(null);
   const [simulatedAqiData, setSimulatedAqiData] = useState([]);
   const [simulatedTrafficData, setSimulatedTrafficData] = useState(new Map());
   const [trafficData, setTrafficData] = useState({
@@ -65,10 +67,6 @@ const SimulationMapScreen = () => {
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [routeFeatures, setRouteFeatures] = useState([]);
   const [isHighlightedRouteId, setHighlightedRouteId] = useState(null);
-  const [routeLabelData, setRouteLabelData] = useState({
-    type: "FeatureCollection",
-    features: [],
-  });
   const [selectedTrafficData, setSelectedTrafficData] = useState(null);
   const [isTrafficPanelVisible, setTrafficPanelVisible] = useState(false);
   const [isAqiPanelVisible, setAqiPanelVisible] = useState(false);
@@ -83,6 +81,54 @@ const SimulationMapScreen = () => {
     });
     return map;
   }, [allCoordinates]);
+
+  const calculateMidPoint = (coordinates) => {
+    if (!coordinates || coordinates.length < 2) {
+      return coordinates[0] || [0, 0];
+    }
+
+    // Tính khoảng cách Euclidean giữa hai điểm
+    const calculateDistance = (point1, point2) => {
+      const [lon1, lat1] = point1;
+      const [lon2, lat2] = point2;
+      const dx = lon2 - lon1;
+      const dy = lat2 - lat1;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    // Tính tổng chiều dài và lưu khoảng cách từng đoạn
+    let totalLength = 0;
+    const segmentLengths = [];
+    for (let i = 0; i < coordinates.length - 1; i++) {
+      const distance = calculateDistance(coordinates[i], coordinates[i + 1]);
+      segmentLengths.push(distance);
+      totalLength += distance;
+    }
+
+    const targetLength = totalLength / 2;
+    let accumulatedLength = 0;
+
+    // Tìm đoạn chứa điểm giữa
+    for (let i = 0; i < segmentLengths.length; i++) {
+      accumulatedLength += segmentLengths[i];
+      if (accumulatedLength >= targetLength) {
+        const segmentStart = coordinates[i];
+        const segmentEnd = coordinates[i + 1];
+        const segmentLength = segmentLengths[i];
+        const remainingLength =
+          targetLength - (accumulatedLength - segmentLength);
+
+        // Nội suy tuyến tính
+        const ratio = remainingLength / segmentLength;
+        const lon = segmentStart[0] + ratio * (segmentEnd[0] - segmentStart[0]);
+        const lat = segmentStart[1] + ratio * (segmentEnd[1] - segmentStart[1]);
+        return [lon, lat];
+      }
+    }
+
+    // Dự phòng
+    return coordinates[Math.floor(coordinates.length / 2)] || coordinates[0];
+  };
 
   useEffect(() => {
     if (
@@ -108,11 +154,13 @@ const SimulationMapScreen = () => {
         routesResponse,
         airQualityResponse,
         simulationsResponse,
+        scenariosResponse,
       ] = await Promise.allSettled([
         axios.get(COORDINATES_API_URL, getAuthHeaders()),
         axios.get(ROUTES_API_URL, getAuthHeaders()),
         axios.get(AIR_QUALITY_API_URL, getAuthHeaders()),
         axios.get(SIMULATIONS_API_URL, getAuthHeaders()),
+        axios.get(SCENARIOS_API_URL, getAuthHeaders()),
       ]);
 
       let errorOccurred = false;
@@ -171,48 +219,50 @@ const SimulationMapScreen = () => {
         simulationsResponse.value.data.success
       ) {
         const simulations = simulationsResponse.value.data.simulations;
-        const aqiSimulations = simulations
-          .filter((sim) => sim.simulation_type === "aqi" && sim.is_active)
-          .map((sim) => {
-            const data = sim.simulation_data;
-            if (
-              !data.lon ||
-              !data.lat ||
-              !data.aqi ||
-              !data.pm25 ||
-              isNaN(parseFloat(data.lon)) ||
-              isNaN(parseFloat(data.lat)) ||
-              isNaN(parseFloat(data.aqi)) ||
-              isNaN(parseFloat(data.pm25))
-            ) {
-              console.warn(
-                `Invalid AQI simulation data for simulation ${sim._id}:`,
-                data
-              );
-              return null;
-            }
-            return {
-              _id: sim._id,
-              simulation_name: sim.simulation_name,
-              stationId: data.stationId,
-              lon: parseFloat(data.lon),
-              lat: parseFloat(data.lat),
-              pm25: parseFloat(data.pm25),
-              pm10: parseFloat(data.pm10 || 0),
-              co: parseFloat(data.co || 0),
-              no2: parseFloat(data.no2 || 0),
-              so2: parseFloat(data.so2 || 0),
-              o3: parseFloat(data.o3 || 0),
-              aqi: parseFloat(data.aqi),
-              radiusKm: parseFloat(data.radiusKm || 1),
-              location: {
-                type: "Point",
-                coordinates: [parseFloat(data.lon), parseFloat(data.lat)],
-              },
-              isSimulated: true,
-            };
-          })
-          .filter(Boolean);
+        setSimulatedAqiData(
+          simulations
+            .filter((sim) => sim.simulation_type === "aqi" && sim.is_active)
+            .map((sim) => {
+              const data = sim.simulation_data;
+              if (
+                !data.lon ||
+                !data.lat ||
+                !data.aqi ||
+                !data.pm25 ||
+                isNaN(parseFloat(data.lon)) ||
+                isNaN(parseFloat(data.lat)) ||
+                isNaN(parseFloat(data.aqi)) ||
+                isNaN(parseFloat(data.pm25))
+              ) {
+                console.warn(
+                  `Invalid AQI simulation data for simulation ${sim._id}:`,
+                  data
+                );
+                return null;
+              }
+              return {
+                _id: sim._id,
+                simulation_name: sim.simulation_name,
+                stationId: data.stationId,
+                lon: parseFloat(data.lon),
+                lat: parseFloat(data.lat),
+                pm25: parseFloat(data.pm25),
+                pm10: parseFloat(data.pm10 || 0),
+                co: parseFloat(data.co || 0),
+                no2: parseFloat(data.no2 || 0),
+                so2: parseFloat(data.so2 || 0),
+                o3: parseFloat(data.o3 || 0),
+                aqi: parseFloat(data.aqi),
+                radiusKm: parseFloat(data.radiusKm || 1),
+                location: {
+                  type: "Point",
+                  coordinates: [parseFloat(data.lon), parseFloat(data.lat)],
+                },
+                isSimulated: true,
+              };
+            })
+            .filter(Boolean)
+        );
         const trafficSimulations = new Map();
         simulations
           .filter((sim) => sim.simulation_type === "traffic" && sim.is_active)
@@ -231,7 +281,6 @@ const SimulationMapScreen = () => {
             trafficSimulations.set(data.segmentKey, trafficImpact);
             trafficSimulations.set(data.reverseSegmentKey, trafficImpact);
           });
-        setSimulatedAqiData(aqiSimulations);
         setSimulatedTrafficData(trafficSimulations);
       } else {
         errorOccurred = true;
@@ -239,6 +288,34 @@ const SimulationMapScreen = () => {
           `Simulations: ${
             simulationsResponse.reason ||
             simulationsResponse.value?.statusText ||
+            "Unknown error"
+          }`
+        );
+      }
+
+      if (
+        scenariosResponse.status === "fulfilled" &&
+        scenariosResponse.value.status === 200
+      ) {
+        let scenarioData = scenariosResponse.value.data;
+        if (scenarioData && typeof scenarioData === "object") {
+          scenarioData = Array.isArray(scenarioData)
+            ? scenarioData
+            : scenarioData.scenarios || [];
+        } else {
+          scenarioData = [];
+        }
+        console.log("Processed scenario data:", scenarioData);
+        const activeScenario = scenarioData.find(
+          (scenario) => scenario.is_active
+        );
+        setActiveScenarioData(activeScenario || null);
+      } else {
+        errorOccurred = true;
+        errorDetails.push(
+          `Scenarios: ${
+            scenariosResponse.reason ||
+            scenariosResponse.value?.statusText ||
             "Unknown error"
           }`
         );
@@ -269,27 +346,105 @@ const SimulationMapScreen = () => {
       !isError &&
       !isBackendGraphDataLoading
     ) {
-      const newTrafficFeatures = allRoutes
-        .map((route) => {
-          const fromCoord = coordinatesMap.get(route.FROMNODENO);
-          const toCoord = coordinatesMap.get(route.TONODENO);
+      let finalAqiData = [...rawAirQualityData];
+      let finalTrafficData = allRoutes.map((route) => ({
+        ...route,
+        VC: route.VC,
+        incident: null,
+      }));
+
+      if (activeScenarioData) {
+        const scenarioAqiSimulations = activeScenarioData.simulations
+          .filter((sim) => sim.simulation_type === "aqi")
+          .map((sim) => {
+            const data = sim.simulation_data;
+            return {
+              _id: sim._id,
+              simulation_name: sim.simulation_name,
+              stationId: data.stationId,
+              lon: parseFloat(data.lon),
+              lat: parseFloat(data.lat),
+              pm25: parseFloat(data.pm25),
+              pm10: parseFloat(data.pm10 || 0),
+              co: parseFloat(data.co || 0),
+              no2: parseFloat(data.no2 || 0),
+              so2: parseFloat(data.so2 || 0),
+              o3: parseFloat(data.o3 || 0),
+              aqi: parseFloat(data.aqi),
+              radiusKm: parseFloat(data.radiusKm || 1),
+              location: {
+                type: "Point",
+                coordinates: [parseFloat(data.lon), parseFloat(data.lat)],
+              },
+              isSimulated: true,
+            };
+          });
+        const scenarioTrafficSimulations = new Map();
+        activeScenarioData.simulations
+          .filter((sim) => sim.simulation_type === "traffic")
+          .forEach((sim) => {
+            const data = sim.simulation_data;
+            const trafficImpact = {
+              _id: sim._id,
+              simulation_name: sim.simulation_name,
+              fromNode: data.fromNode,
+              toNode: data.toNode,
+              VC: parseFloat(data.VC),
+              incident: data.incident,
+              isBlocked: data.isBlocked || false,
+              isSimulated: true,
+            };
+            scenarioTrafficSimulations.set(data.segmentKey, trafficImpact);
+            scenarioTrafficSimulations.set(
+              data.reverseSegmentKey,
+              trafficImpact
+            );
+          });
+        finalAqiData = [...finalAqiData, ...scenarioAqiSimulations];
+        finalTrafficData = finalTrafficData.map((route) => {
+          const segmentKey = `${route.FROMNODENO}-${route.TONODENO}`;
+          const reverseSegmentKey = `${route.TONODENO}-${route.FROMNODENO}`;
+          const simulatedTraffic =
+            scenarioTrafficSimulations.get(segmentKey) ||
+            scenarioTrafficSimulations.get(reverseSegmentKey);
+          return simulatedTraffic
+            ? {
+                ...route,
+                VC: simulatedTraffic.VC,
+                incident: simulatedTraffic.incident,
+              }
+            : route;
+        });
+      } else {
+        finalAqiData = [...finalAqiData, ...simulatedAqiData];
+        finalTrafficData = finalTrafficData.map((route) => {
           const segmentKey = `${route.FROMNODENO}-${route.TONODENO}`;
           const reverseSegmentKey = `${route.TONODENO}-${route.FROMNODENO}`;
           const simulatedTraffic =
             simulatedTrafficData.get(segmentKey) ||
             simulatedTrafficData.get(reverseSegmentKey);
+          return simulatedTraffic
+            ? {
+                ...route,
+                VC: simulatedTraffic.VC,
+                incident: simulatedTraffic.incident,
+              }
+            : route;
+        });
+      }
+
+      const newTrafficFeatures = finalTrafficData
+        .map((route) => {
+          const fromCoord = coordinatesMap.get(route.FROMNODENO);
+          const toCoord = coordinatesMap.get(route.TONODENO);
+          const segmentKey = `${route.FROMNODENO}-${route.TONODENO}`;
+          const reverseSegmentKey = `${route.TONODENO}-${route.FROMNODENO}`;
 
           const properties = {
             id: route.linkNo,
-            VC: simulatedTraffic ? simulatedTraffic.VC : route.VC,
-            status: simulatedTraffic
-              ? simulatedTraffic.incident !== "Không"
-                ? simulatedTraffic.incident.toLowerCase()
-                : simulatedTraffic.VC <= 0.6
-                ? "smooth"
-                : simulatedTraffic.VC <= 0.8
-                ? "moderate"
-                : "congested"
+            VC: route.VC,
+            status: route.incident
+              ? route.incident.toLowerCase()
               : route.VC <= 0.6
               ? "smooth"
               : route.VC <= 0.8
@@ -298,18 +453,12 @@ const SimulationMapScreen = () => {
             fromNode: route.FROMNODENO,
             toNode: route.TONODENO,
             length: route.LENGTH || 0,
-            incidentType: simulatedTraffic ? simulatedTraffic.incident : null,
-            incidentDescription: simulatedTraffic
-              ? simulatedTraffic.incident !== "Không"
-                ? `${simulatedTraffic.incident} (sim)`
-                : null
+            incidentType: route.incident || null,
+            incidentDescription: route.incident
+              ? `${route.incident} (sim)`
               : null,
-            incidentSeverity: simulatedTraffic
-              ? simulatedTraffic.incident !== "Không"
-                ? "high"
-                : null
-              : null,
-            isSimulated: !!simulatedTraffic,
+            incidentSeverity: route.incident ? "high" : null,
+            isSimulated: !!route.incident,
           };
 
           if (
@@ -355,7 +504,7 @@ const SimulationMapScreen = () => {
         features: newTrafficFeatures,
       });
 
-      const newAirQualityFeatures = [...rawAirQualityData, ...simulatedAqiData]
+      const newAirQualityFeatures = finalAqiData
         .filter((aqData) => {
           if (!aqData.location?.coordinates) {
             console.warn(
@@ -437,60 +586,13 @@ const SimulationMapScreen = () => {
     allCoordinates,
     allRoutes,
     rawAirQualityData,
+    activeScenarioData,
     simulatedAqiData,
     simulatedTrafficData,
     isError,
     isBackendGraphDataLoading,
     coordinatesMap,
   ]);
-
-  useEffect(() => {
-    if (routeFeatures.length > 0) {
-      const newLabelFeatures = routeFeatures.flatMap((featureCollection) =>
-        featureCollection.features
-          .filter(
-            (f) =>
-              f.geometry.type === "LineString" && f.properties?.recommendedMode
-          )
-          .map((routeFeature) => {
-            const coordinates = routeFeature.geometry.coordinates;
-            let midPoint = null;
-            if (coordinates.length > 1) {
-              const midIndex = Math.floor(coordinates.length / 2);
-              midPoint = coordinates[midIndex];
-            } else if (coordinates.length === 1) {
-              midPoint = coordinates[0];
-            }
-
-            if (midPoint) {
-              return {
-                type: "Feature",
-                properties: {
-                  id: `label-${routeFeature.properties.routeId}`,
-                  labelText: `PT: ${routeFeature.properties.recommendedMode}`,
-                  routeId: routeFeature.properties.routeId,
-                  isHighlighted:
-                    routeFeature.properties.routeId === isHighlightedRouteId,
-                },
-                geometry: {
-                  type: "Point",
-                  coordinates: midPoint,
-                },
-              };
-            }
-            return null;
-          })
-          .filter(Boolean)
-      );
-
-      setRouteLabelData({
-        type: "FeatureCollection",
-        features: newLabelFeatures,
-      });
-    } else {
-      setRouteLabelData({ type: "FeatureCollection", features: [] });
-    }
-  }, [routeFeatures, isHighlightedRouteId]);
 
   useEffect(() => {
     setLoading(!mapLoaded || isBackendGraphDataLoading || isError);
@@ -500,14 +602,14 @@ const SimulationMapScreen = () => {
     (
       startCoords,
       endCoords,
-      allRoutesGeoJSON, // This is an Array<FeatureCollection>
+      allRoutesGeoJSON,
       selectedRouteId,
-      selectedRoutingCriterionId // This parameter is actually not needed here anymore for feature processing, but kept for consistency
+      selectedRoutingCriterionId
     ) => {
       console.log(
         "Received allRoutesGeoJSON in handleRouteSelected:",
         JSON.stringify(allRoutesGeoJSON, null, 2)
-      ); // Add this log
+      );
 
       setHighlightedRouteId(selectedRouteId);
       setRouteStartCoords(startCoords);
@@ -526,7 +628,6 @@ const SimulationMapScreen = () => {
       let processedRouteFeatures = [];
       if (allRoutesGeoJSON && allRoutesGeoJSON.length > 0) {
         allRoutesGeoJSON.forEach((featureCollection) => {
-          // 'featureCollection' is an object like { type: "FeatureCollection", features: [...] }
           if (
             !featureCollection ||
             !Array.isArray(featureCollection.features)
@@ -535,7 +636,7 @@ const SimulationMapScreen = () => {
               "Skipping invalid FeatureCollection in handleRouteSelected:",
               featureCollection
             );
-            return; // Skip this item if it's not a valid FeatureCollection
+            return;
           }
 
           featureCollection.features.forEach((feature) => {
@@ -543,11 +644,10 @@ const SimulationMapScreen = () => {
               ...feature,
               properties: {
                 ...feature.properties,
-                // Ensure routeId and isHighlighted are correctly set
-                routeId: feature.properties.routeId || featureCollection.id, // Use featureCollection.id if feature.properties.routeId isn't there
+                routeId: feature.properties.routeId || featureCollection.id,
                 isHighlighted:
                   (feature.properties.routeId || featureCollection.id) ===
-                  selectedRouteId, // Check against feature's own routeId or the collection's ID
+                  selectedRouteId,
                 recommendedMode: feature.properties.recommendedMode || null,
                 healthScore: feature.properties.healthScore || -1,
               },
@@ -561,14 +661,13 @@ const SimulationMapScreen = () => {
         console.log(
           "Final features for map drawing (allFeatures in handleRouteSelected):",
           JSON.stringify(allFeatures, null, 2)
-        ); // Add this log
+        );
 
         setRouteFeatures([
           { type: "FeatureCollection", features: allFeatures },
         ]);
 
         if (mapRef.current?.fitBounds && mapRef.current?.calculateBoundingBox) {
-          // Ensure that allFeatures is not empty before trying to calculate bounds
           if (allFeatures.length > 0) {
             const bounds = mapRef.current.calculateBoundingBox(allFeatures);
             if (bounds) {
@@ -616,9 +715,10 @@ const SimulationMapScreen = () => {
         tappedFeature.properties.routeId === isHighlightedRouteId &&
         tappedFeature.geometry?.coordinates?.length > 0
       ) {
+        const midPoint = calculateMidPoint(tappedFeature.geometry.coordinates);
         setSelectedRouteData({
           ...tappedFeature.properties,
-          coordinates: tappedFeature.geometry.coordinates[0],
+          coordinates: midPoint,
         });
         setSelectedAqiData(null);
         setSelectedTrafficData(null);
@@ -658,17 +758,14 @@ const SimulationMapScreen = () => {
   const interactiveLayerIds = useMemo(() => {
     const ids = [];
 
-    // Air Quality Layer
     if (layersVisibility.airQuality) {
       ids.push("airQualityLayer");
     }
 
-    // Traffic Layer
     if (layersVisibility.traffic) {
       ids.push("trafficLayer");
     }
 
-    // Route Layers (có thể có nhiều route layers với ID động)
     routeFeatures.forEach((_, index) => {
       ids.push(`route-layer-${index}-default`);
       ids.push(`highlighted-route-layer-${index}`);
@@ -677,6 +774,7 @@ const SimulationMapScreen = () => {
 
     return ids;
   }, [layersVisibility.airQuality, layersVisibility.traffic, routeFeatures]);
+
   const handleMapPress = useCallback(
     (e) => {
       console.log("Map pressed event:", {
@@ -688,7 +786,6 @@ const SimulationMapScreen = () => {
       const clickedFeatures = e.features || [];
       console.log("Features clicked:", clickedFeatures);
 
-      // --- Xử lý cho Air Quality Layer ---
       const clickedAqiFeature = clickedFeatures.find(
         (f) => f.layer.id === "airQualityLayer"
       );
@@ -697,7 +794,7 @@ const SimulationMapScreen = () => {
         const coords = clickedAqiFeature.geometry.coordinates;
         setSelectedAqiData({
           coordinates:
-            Array.isArray(coords) && coords.length === 2 ? coords : [0, 0], // Fallback an toàn
+            Array.isArray(coords) && coords.length === 2 ? coords : [0, 0],
           ...clickedAqiFeature.properties,
         });
         setSelectedRouteData(null);
@@ -705,7 +802,6 @@ const SimulationMapScreen = () => {
         return;
       }
 
-      // --- Xử lý cho Traffic Layer ---
       const clickedTrafficFeature = clickedFeatures.find(
         (f) => f.layer.id === "trafficLayer"
       );
@@ -713,7 +809,7 @@ const SimulationMapScreen = () => {
         console.log("Clicked Traffic Layer:", clickedTrafficFeature.properties);
         const coords = clickedTrafficFeature.geometry.coordinates;
         if (Array.isArray(coords) && coords.length > 0) {
-          const midPoint = coords[Math.floor(coords.length / 2)] || coords[0];
+          const midPoint = calculateMidPoint(coords);
           setSelectedTrafficData({
             coordinates: midPoint,
             ...clickedTrafficFeature.properties,
@@ -726,7 +822,6 @@ const SimulationMapScreen = () => {
         return;
       }
 
-      // --- Xử lý cho Route Layer ---
       const clickedRouteFeature = clickedFeatures.find(
         (f) =>
           f.layer.id.startsWith("route-layer-") ||
@@ -737,7 +832,7 @@ const SimulationMapScreen = () => {
         console.log("Clicked Route Layer:", clickedRouteFeature.properties);
         const coords = clickedRouteFeature.geometry.coordinates;
         if (Array.isArray(coords) && coords.length > 0) {
-          const midPoint = coords[Math.floor(coords.length / 2)] || coords[0];
+          const midPoint = calculateMidPoint(coords);
           setSelectedRouteData({
             coordinates: midPoint,
             ...clickedRouteFeature.properties,
@@ -750,7 +845,6 @@ const SimulationMapScreen = () => {
         return;
       }
 
-      // Đóng callout nếu nhấp vào nền
       if (clickedFeatures.length === 0) {
         setSelectedAqiData(null);
         setSelectedRouteData(null);
@@ -760,6 +854,7 @@ const SimulationMapScreen = () => {
     },
     [interactiveLayerIds, layersVisibility, routeFeatures]
   );
+
   const getAuthHeaders = useCallback(() => {
     if (!authToken) {
       return {};
@@ -875,6 +970,40 @@ const SimulationMapScreen = () => {
     [layersVisibility]
   );
 
+  // Tạo danh sách các popup icon phương tiện
+  const modeIconFeatures = useMemo(() => {
+    return routeFeatures.flatMap((featureCollection) =>
+      featureCollection.features
+        .filter(
+          (f) =>
+            f.geometry.type === "LineString" && f.properties?.recommendedMode
+        )
+        .map((routeFeature) => {
+          const coordinates = routeFeature.geometry.coordinates;
+          const midPoint = calculateMidPoint(coordinates);
+
+          if (midPoint) {
+            return {
+              type: "Feature",
+              properties: {
+                id: `mode-icon-${routeFeature.properties.routeId}`,
+                recommendedMode: routeFeature.properties.recommendedMode,
+                routeId: routeFeature.properties.routeId,
+                isHighlighted:
+                  routeFeature.properties.routeId === isHighlightedRouteId,
+              },
+              geometry: {
+                type: "Point",
+                coordinates: midPoint,
+              },
+            };
+          }
+          return null;
+        })
+        .filter(Boolean)
+    );
+  }, [routeFeatures, isHighlightedRouteId]);
+
   return (
     <View style={styles.container}>
       <View style={styles.mapContainer}>
@@ -964,7 +1093,6 @@ const SimulationMapScreen = () => {
                     key={`aqi-${feature.properties.stationUid}`}
                     longitude={feature.geometry.coordinates[0]}
                     latitude={feature.geometry.coordinates[1]}
-                    // onClick={() => handleAirQualityFeaturePress(feature)}
                   >
                     <View style={styles.aqiMarkerContainer}>
                       <AirQualityMarker stationData={feature.properties} />
@@ -990,7 +1118,7 @@ const SimulationMapScreen = () => {
                         -1,
                         "gray",
                         0,
-                        "red",
+                        "blue",
                         50,
                         "orange",
                         100,
@@ -1013,7 +1141,7 @@ const SimulationMapScreen = () => {
                         -1,
                         "blue",
                         0,
-                        "#FF0000",
+                        "blue",
                         50,
                         "#FFA500",
                         100,
@@ -1064,32 +1192,6 @@ const SimulationMapScreen = () => {
                   )}
                 </Source>
               ))}
-              {routeLabelData.features.length > 0 && (
-                <Source
-                  id="routeLabelSource"
-                  type="geojson"
-                  data={routeLabelData}
-                >
-                  <Layer
-                    id="routeLabelLayer"
-                    type="symbol"
-                    filter={["==", ["get", "isHighlighted"], true]}
-                    layout={{
-                      "text-field": ["get", "labelText"],
-                      "text-size": 14,
-                      "text-anchor": "top",
-                      "text-justify": "center",
-                      "text-allow-overlap": true,
-                      "text-ignore-placement": true,
-                    }}
-                    paint={{
-                      "text-color": "#2c3e50",
-                      "text-halo-color": "white",
-                      "text-halo-width": 1.5,
-                    }}
-                  />
-                </Source>
-              )}
               {layersVisibility.traffic && trafficData.features.length > 0 && (
                 <Source id="trafficSource" type="geojson" data={trafficData}>
                   <Layer
@@ -1108,7 +1210,7 @@ const SimulationMapScreen = () => {
                         "tai nạn",
                         "#ff0000",
                         "đóng đường",
-                        "black",
+                        "#ff0000",
                         "gray",
                       ],
                       "line-width": [
@@ -1117,16 +1219,67 @@ const SimulationMapScreen = () => {
                         "tai nạn",
                         7,
                         "đóng đường",
-                        8,
+                        10,
                         5,
                       ],
-                      "line-opacity": 0.7,
+                      "line-opacity": 0.8,
+                      "line-dasharray": [
+                        "match",
+                        ["get", "status"],
+                        "đóng đường",
+                        ["literal", [2, 2]],
+                        ["literal", [1, 0]],
+                      ],
                     }}
                     interactive={true}
                   />
                 </Source>
               )}
-
+              {layersVisibility.traffic &&
+                trafficData.features
+                  .filter(
+                    (feature) => feature.properties.status === "đóng đường"
+                  )
+                  .map((feature) => {
+                    const coordinates = feature.geometry.coordinates;
+                    const midPoint = calculateMidPoint(coordinates);
+                    return (
+                      <Marker
+                        key={`closed-road-${feature.properties.id}`}
+                        longitude={midPoint[0]}
+                        latitude={midPoint[1]}
+                        anchor="center"
+                      >
+                        <View style={styles.closedRoadIcon}>
+                          <Text style={styles.closedRoadIconText}>🛑</Text>
+                        </View>
+                      </Marker>
+                    );
+                  })}
+              {modeIconFeatures.map((feature) => (
+                <Marker
+                  key={feature.properties.id}
+                  longitude={feature.geometry.coordinates[0]}
+                  latitude={feature.geometry.coordinates[1]}
+                  anchor="center"
+                >
+                  <View
+                    style={[
+                      styles.modeIconPopup,
+                      feature.properties.isHighlighted &&
+                        styles.modeIconPopupHighlighted,
+                    ]}
+                  >
+                    <Text style={styles.modeIconText}>
+                      {feature.properties.recommendedMode === "walking" && "🚶"}
+                      {feature.properties.recommendedMode === "cycling" && "🚴"}
+                      {feature.properties.recommendedMode === "driving" && "🚗"}
+                      {feature.properties.recommendedMode === "motorcycle" &&
+                        "🏍️"}
+                    </Text>
+                  </View>
+                </Marker>
+              ))}
               {selectedAqiData && (
                 <Marker
                   longitude={selectedAqiData.coordinates[0]}
@@ -1376,6 +1529,39 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold",
     fontSize: 16,
+  },
+  closedRoadIcon: {
+    backgroundColor: "#ff0000",
+    borderRadius: 15,
+    width: 30,
+    height: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+    opacity: 0.9,
+  },
+  closedRoadIconText: {
+    fontSize: 18,
+    color: "#fff",
+  },
+  modeIconPopup: {
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    borderRadius: 15,
+    width: 30,
+    height: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#3498db",
+    opacity: 0.9,
+  },
+  modeIconPopupHighlighted: {
+    borderColor: "#ffffff",
+    backgroundColor: "rgb(255, 255, 255)",
+  },
+  modeIconText: {
+    fontSize: 18,
   },
 });
 

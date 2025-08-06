@@ -6,15 +6,8 @@ const RouteCallout = ({ data, onClose }) => {
     return null;
   }
 
-  // Destructure properties from data
-  const {
-    routeId,
-    recommendedMode,
-    healthScore,
-    distance, // Assuming you have this property
-    estimatedTime, // Assuming you have this property
-    // Add more properties as needed from your route features
-  } = data;
+  const { routeId, recommendedMode, healthScore, distance, estimatedTime } =
+    data;
 
   // Function to format health score color
   const getHealthScoreColor = (score) => {
@@ -69,7 +62,6 @@ const RouteCallout = ({ data, onClose }) => {
             {Math.ceil(estimatedTime / 60)} phút
           </Text>
         )}
-        {/* Add more detail lines here based on your route properties */}
       </View>
     </View>
   );

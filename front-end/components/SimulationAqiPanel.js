@@ -6,15 +6,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Alert, // Giữ Alert cho native
+  Alert,
   ScrollView,
-  Platform, // Import Platform để kiểm tra môi trường
+  Platform,
 } from "react-native";
 
 const SimulationAqiPanel = ({ data, onClose, onApplyAqiSimulation }) => {
-  // 'data' prop chứa thông tin trạm AQI đã được chọn từ callout.
-  // data sẽ có các trường: stationUid, stationName, coordinates: [lon, lat], pm25, aqi, pm10, co, no2, so2, o3
-
   // Lấy kinh độ và vĩ độ từ mảng coordinates
   const currentLon = data.coordinates ? data.coordinates[0] : null;
   const currentLat = data.coordinates ? data.coordinates[1] : null;
@@ -47,10 +44,10 @@ const SimulationAqiPanel = ({ data, onClose, onApplyAqiSimulation }) => {
   const [o3, setO3] = useState(
     data.o3 !== undefined && data.o3 !== null ? data.o3.toFixed(1) : "10.0"
   );
-  const [radiusKm, setRadiusKm] = useState("5.0"); // Bán kính ảnh hưởng ban đầu (ví dụ 5km)
+  const [radiusKm, setRadiusKm] = useState("5.0");
   const [simulationName, setSimulationName] = useState(
     `Mô phỏng AQI ${data.stationName || data.stationUid}`
-  ); // Tên mô phỏng ban đầu
+  );
 
   const handleApply = () => {
     // Xác thực đầu vào
@@ -63,13 +60,8 @@ const SimulationAqiPanel = ({ data, onClose, onApplyAqiSimulation }) => {
     const parsedO3 = parseFloat(o3);
     const parsedRadiusKm = parseFloat(radiusKm);
 
-    // Hàm hiển thị cảnh báo tùy theo nền tảng
     const showAlert = (title, message) => {
-      if (Platform.OS === "web") {
-        window.alert(`${title}\n${message}`); // Sử dụng alert của trình duyệt cho web
-      } else {
-        Alert.alert(title, message); // Sử dụng Alert của React Native cho native
-      }
+      Alert.alert(title, message);
     };
 
     if (isNaN(parsedAqi) || parsedAqi < 0) {
@@ -113,8 +105,6 @@ const SimulationAqiPanel = ({ data, onClose, onApplyAqiSimulation }) => {
       return;
     }
 
-    // Gọi hàm onApplyAqiSimulation được truyền từ component cha (SimulationMapScreen)
-    // Truyền tất cả dữ liệu cần thiết cho API backend
     onApplyAqiSimulation({
       lon: currentLon, // Kinh độ của trạm
       lat: currentLat, // Vĩ độ của trạm
@@ -137,7 +127,7 @@ const SimulationAqiPanel = ({ data, onClose, onApplyAqiSimulation }) => {
         {/* Hiển thị thông tin trạm AQI đã biết từ prop 'data' */}
         <View style={panelStyles.infoSection}>
           <Text style={panelStyles.detailTitle}>Thông tin trạm:</Text>
-          <Text style={panelStyles.detail}>ID: {data.stationUid}</Text>
+          {/* <Text style={panelStyles.detail}>ID: {data.stationUid}</Text> */}
           <Text style={panelStyles.detail}>Tên: {data.stationName}</Text>
           {/* Hiển thị kinh độ và vĩ độ từ data.coordinates */}
           <Text style={panelStyles.detail}>
@@ -263,19 +253,17 @@ const SimulationAqiPanel = ({ data, onClose, onApplyAqiSimulation }) => {
         />
 
         {/* Nút Áp dụng và Đóng */}
-        <TouchableOpacity
-          style={[panelStyles.applyButton, panelStyles.webCursorPointer]}
-          onPress={handleApply}
-        >
-          <Text style={panelStyles.applyButtonText}>Thêm Mô phỏng AQI</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[panelStyles.closeButton, panelStyles.webCursorPointer]}
-          onPress={onClose}
-        >
-          <Text style={panelStyles.closeButtonText}>Đóng</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <TouchableOpacity
+            style={[panelStyles.applyButton]}
+            onPress={handleApply}
+          >
+            <Text style={panelStyles.applyButtonText}>Thêm Mô phỏng</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[panelStyles.closeButton]} onPress={onClose}>
+            <Text style={panelStyles.closeButtonText}>Đóng</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </View>
   );
@@ -345,11 +333,12 @@ const panelStyles = StyleSheet.create({
     // với điều kiện Platform.OS === 'web'
   },
   applyButton: {
+    width: "45%",
     backgroundColor: "#28a745",
-    paddingVertical: 10,
+    paddingVertical: 10, // Reduced padding
     borderRadius: 8,
     alignItems: "center",
-    marginTop: 15,
+    marginTop: 15, // Reduced space above
     shadowColor: "#28a745",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
@@ -362,21 +351,22 @@ const panelStyles = StyleSheet.create({
     fontWeight: "bold",
   },
   closeButton: {
-    marginTop: 10,
+    width: "45%",
+    backgroundColor: "red",
+    paddingVertical: 10, // Reduced padding
+    borderRadius: 8,
     alignItems: "center",
-    paddingVertical: 8,
-    // Note: If you want a red background for the close button, add it here.
-    // backgroundColor: "#e74c3c", // Example: if you want a solid red background
-    borderRadius: 8, // Apply border radius if it has a background
+    marginTop: 15, // Reduced space above
+    shadowColor: "#28a745",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 6,
   },
   closeButtonText: {
-    color: "#e74c3c", // Keep text color red
+    color: "white", // Keep text color white
     fontSize: 14,
     fontWeight: "600",
-  },
-  // Style riêng cho web để thêm con trỏ pointer
-  webCursorPointer: {
-    cursor: "pointer",
   },
 });
 

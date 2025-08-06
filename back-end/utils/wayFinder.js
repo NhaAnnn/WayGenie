@@ -2,7 +2,6 @@ const turf = require("@turf/turf");
 
 function getBestRoute(routes, criteria) {
   if (!routes.length) return null;
-
   const bestRoute = [...routes].sort((a, b) => {
     switch (criteria) {
       case "optimal":
@@ -25,14 +24,13 @@ function getBestRoute(routes, criteria) {
       case "least_pollution":
         return a.metrics.pollution - b.metrics.pollution;
       case "healthiest":
-        return a.metrics.health - b.metrics.health;
+        return b.metrics.health - a.metrics.health;
       case "emission":
         return a.metrics.emission - b.metrics.emission;
       default:
         return a.metrics.distance - b.metrics.distance;
     }
   })[0];
-
   return {
     id: bestRoute.id,
     metrics: {
@@ -54,14 +52,14 @@ class WayFinder {
     coordinatesMap,
     mode,
     aqisData = [],
-    maxRoutes = 5,
+    maxRoutes = 3,
     simulatedTrafficImpacts = new Map()
   ) {
     this.graph = graph;
     this.coordinatesMap = coordinatesMap;
     this.mode = mode;
     this.aqisData = aqisData;
-    this.maxRoutes = Math.min(maxRoutes, 5);
+    this.maxRoutes = maxRoutes;
     this.aqisMap = this.buildAqisMap(aqisData);
     this.allowedTransportModes = [
       "walking",
@@ -118,7 +116,6 @@ class WayFinder {
         multiplier = vc <= 0.6 ? 1 : vc <= 0.8 ? 1.2 : 1.5;
       }
     }
-
     if (
       segmentSpeedFromData !== null &&
       segmentSpeedFromData !== undefined &&
@@ -126,7 +123,6 @@ class WayFinder {
     ) {
       return (distance / segmentSpeedFromData) * 60 * multiplier;
     }
-
     const baseSpeeds = {
       walking: 5,
       cycling: 20,
@@ -135,7 +131,6 @@ class WayFinder {
     };
     const actualMode = segmentMode || this.mode;
     const baseSpeed = baseSpeeds[actualMode];
-
     if (baseSpeed === undefined || baseSpeed <= 0) {
       console.warn(
         `Undefined or invalid base speed for mode: ${actualMode}. Using default 20 km/h.`
@@ -159,7 +154,6 @@ class WayFinder {
         simulatedAqiIds: [],
       };
     }
-
     const validCoordinates = routeGeometry.coordinates.filter(
       (coord) =>
         Array.isArray(coord) &&
@@ -169,7 +163,6 @@ class WayFinder {
         typeof coord[1] === "number" &&
         !isNaN(coord[1])
     );
-
     if (validCoordinates.length < 2) {
       console.warn(
         "Invalid route geometry coordinates for AQIS impact calculation."
@@ -182,7 +175,6 @@ class WayFinder {
         simulatedAqiIds: [],
       };
     }
-
     const line = turf.lineString(validCoordinates);
     let totalAqi = 0,
       totalPm25 = 0,
@@ -190,7 +182,6 @@ class WayFinder {
     let count = 0;
     let isSimulatedAqi = false;
     const simulatedAqiIds = new Set();
-
     this.aqisData.forEach((aqisRecord) => {
       if (
         aqisRecord.location &&
@@ -206,7 +197,6 @@ class WayFinder {
           units: "kilometers",
         });
         const effectiveRadius = aqisRecord.radiusKm || 50;
-
         if (distance < effectiveRadius) {
           totalAqi += aqisRecord.aqi || 0;
           totalPm25 += aqisRecord.pm25 || 0;
@@ -226,7 +216,6 @@ class WayFinder {
         );
       }
     });
-
     return count > 0
       ? {
           aqi: totalAqi / count,
@@ -270,7 +259,6 @@ class WayFinder {
       routeData.geometry
     );
     const emission = this.estimateEmission(this.mode, distance);
-
     const weights = {
       distance: 1,
       time: 1,
@@ -278,11 +266,9 @@ class WayFinder {
       emission: 1,
       health: 3,
     };
-
     let cost = 0,
       pollutionCost = 0,
       healthCost = 0;
-
     switch (criteria) {
       case "optimal":
         pollutionCost = aqisImpact.aqi * weights.pollution;
@@ -315,7 +301,7 @@ class WayFinder {
           aqisImpact.aqi
         );
         cost = -healthCost;
-        cost += aqisImpact.aqi * 0.1;
+        cost += aqisImpact.aqi * 0.5;
         break;
       case "emission":
         cost = emission;
@@ -324,22 +310,20 @@ class WayFinder {
         cost = distance * weights.distance + time * weights.time;
         break;
     }
-
     return {
       cost,
       metrics: {
         distance,
         time,
-        pollution: aqisImpact.pm25,
+        pollution: aqisImpact.aqi,
         emission,
         health: healthCost,
       },
     };
   }
 
-  _calculateModeHealthScore(mode, distance, pm25) {
+  _calculateModeHealthScore(mode, distance, aqi) {
     let score = 0;
-
     switch (mode) {
       case "walking":
         score += 100;
@@ -354,7 +338,6 @@ class WayFinder {
         score += 0;
         break;
     }
-
     switch (mode) {
       case "walking":
         score -= Math.max(0, (distance - 1.0) * 10);
@@ -369,135 +352,250 @@ class WayFinder {
         score -= Math.max(0, (distance - 20) * 0.1);
         break;
     }
-
-    if (pm25 > 0) {
+    if (aqi > 0) {
       switch (mode) {
         case "walking":
-          score -= pm25 * 0.5;
+          score -= aqi * 0.5;
           break;
         case "cycling":
-          score -= pm25 * 0.4;
+          score -= aqi * 0.4;
           break;
         case "motorcycle":
-          score -= pm25 * 1.5;
+          score -= aqi * 1;
           break;
         case "driving":
-          score -= pm25 * 0.8;
+          score -= aqi * 0.8;
           break;
       }
     }
-
-    if (mode === "motorcycle" || mode === "driving") {
-      score -= 80;
-    }
-
-    score += (Math.random() - 0.5) * 20;
-
     return score;
   }
 
   findAllRoutes(startNodeId, endNodeId, criteria) {
-    const allFoundRoutes = [];
+    // 1. Chuẩn bị dữ liệu ban đầu
+    const originalGraph = JSON.parse(JSON.stringify(this.graph));
+    const A = [];
+    const B = new PriorityQueue();
     const foundRouteKeys = new Set();
+    const segmentUsage = new Map();
+    const maxAttempts = 50;
+    const diversityPenaltyBase = 50;
+    const minRouteDifference = 0.6;
 
+    // 2. Tìm tuyến đầu tiên
     const firstRoute = this._findShortestPath(
       startNodeId,
       endNodeId,
       criteria,
       new Set()
     );
+    if (!firstRoute) return [];
 
-    if (firstRoute) {
-      allFoundRoutes.push(firstRoute);
-      foundRouteKeys.add(JSON.stringify(firstRoute.path));
-    } else {
-      return [];
-    }
+    A.push(firstRoute);
+    foundRouteKeys.add(JSON.stringify(firstRoute.path));
+    firstRoute.segments.forEach((seg) => {
+      const key = `${seg.FROMNODENO}-${seg.TONODENO}`;
+      segmentUsage.set(key, (segmentUsage.get(key) || 0) + 1);
+    });
 
-    if (criteria === "healthiest") {
-      return allFoundRoutes.map((route, index) => {
-        let finalSegments = this.suggestTransportForSegments(route.segments);
-        let recommendedModesForRoute = finalSegments.map(
-          (s) => s.recommendedMode
-        );
-        return {
-          id: `route_${index + 1}`,
-          path: route.path,
-          segments: finalSegments,
-          metrics: {
-            distance: route.metrics.distance,
-            time: route.metrics.time,
-            pollution: route.metrics.pollution,
-            emission: route.metrics.emission,
-            health: route.metrics.health,
-          },
-          geometry: route.geometry,
-          segmentFeatures: route.segmentFeatures,
-          properties: {
-            recommendedModes: recommendedModesForRoute,
-          },
-        };
-      });
-    }
+    // 3. Tìm các tuyến tiếp theo
+    for (let k = 1; k < this.maxRoutes; k++) {
+      const prevRoute = A[k - 1];
+      if (!prevRoute) break;
 
-    let attempts = 0;
-    const maxAttempts = 20;
+      let attempts = 0;
+      for (
+        let i = 0;
+        i < prevRoute.path.length - 1 && attempts < maxAttempts;
+        i++, attempts++
+      ) {
+        // 3.1. Chuẩn bị spur path
+        const spurNode = prevRoute.path[i];
+        const rootPath = prevRoute.path.slice(0, i + 1);
 
-    while (allFoundRoutes.length < this.maxRoutes && attempts < maxAttempts) {
-      attempts++;
-      const currentBlockedEdges = new Set();
-      allFoundRoutes.forEach((route) => {
-        route.segments.forEach((segment) => {
-          currentBlockedEdges.add(`${segment.FROMNODENO}-${segment.TONODENO}`);
-        });
-      });
-
-      const nextRoute = this._findShortestPath(
-        startNodeId,
-        endNodeId,
-        criteria,
-        currentBlockedEdges
-      );
-
-      if (nextRoute) {
-        const routeKey = JSON.stringify(nextRoute.path);
-        if (!foundRouteKeys.has(routeKey)) {
-          allFoundRoutes.push(nextRoute);
-          foundRouteKeys.add(routeKey);
+        // 3.2. Tạo đồ thị tạm thời
+        const modifiedGraph = JSON.parse(JSON.stringify(this.graph));
+        for (let j = 0; j < i; j++) {
+          const node = prevRoute.path[j];
+          if (modifiedGraph[node]) {
+            modifiedGraph[node] = modifiedGraph[node].filter(
+              (n) => n.neighbor !== prevRoute.path[j + 1]
+            );
+          }
         }
-      } else {
-        break;
+        this.graph = modifiedGraph;
+
+        // 3.3. Tìm spur path
+        const blockedEdges = new Set();
+        for (let p = 0; p < k; p++) {
+          const otherPath = A[p];
+          if (otherPath.path.slice(0, i + 1).join("-") === rootPath.join("-")) {
+            blockedEdges.add(`${otherPath.path[i]}-${otherPath.path[i + 1]}`);
+          }
+        }
+
+        const spurPath = this._findShortestPath(
+          spurNode,
+          endNodeId,
+          criteria,
+          blockedEdges
+        );
+        this.graph = originalGraph;
+
+        if (spurPath) {
+          // 3.4. Kết hợp root path và spur path
+          const rootSegments = prevRoute.segments.slice(0, i);
+          let rootGeometryCoords = [];
+          if (i > 0) {
+            rootGeometryCoords = prevRoute.segments
+              .slice(0, i)
+              .flatMap((seg, idx) =>
+                idx === 0
+                  ? seg.geometry.coordinates
+                  : seg.geometry.coordinates.slice(1)
+              );
+          }
+          const rootSegmentFeatures = prevRoute.segmentFeatures.slice(0, i);
+
+          let rootMetrics = {
+            distance: 0,
+            time: 0,
+            pollution: 0,
+            emission: 0,
+            health: 0,
+          };
+          rootSegments.forEach((seg) => {
+            const { metrics } = this._calculateSegmentCost(seg, criteria);
+            rootMetrics.distance += metrics.distance;
+            rootMetrics.time += metrics.time;
+            rootMetrics.pollution += metrics.pollution;
+            rootMetrics.emission += metrics.emission;
+            rootMetrics.health += metrics.health;
+          });
+
+          const newPath = [...rootPath.slice(0, -1), ...spurPath.path];
+          const newSegments = [...rootSegments, ...spurPath.segments];
+          const newGeometry = turf.lineString([
+            ...rootGeometryCoords,
+            ...spurPath.geometry.coordinates,
+          ]);
+          const newSegmentFeatures = [
+            ...rootSegmentFeatures,
+            ...spurPath.segmentFeatures,
+          ];
+
+          const newMetrics = {
+            distance: rootMetrics.distance + spurPath.metrics.distance,
+            time: rootMetrics.time + spurPath.metrics.time,
+            pollution: rootMetrics.pollution + spurPath.metrics.pollution,
+            emission: rootMetrics.emission + spurPath.metrics.emission,
+            health: rootMetrics.health + spurPath.metrics.health,
+          };
+
+          // 3.5. Kiểm tra độ đa dạng
+          const routeKey = JSON.stringify(newPath);
+          if (!foundRouteKeys.has(routeKey)) {
+            const newSegmentsSet = new Set(
+              newSegments.map((s) => `${s.FROMNODENO}-${s.TONODENO}`)
+            );
+
+            let maxOverlap = 0;
+            A.forEach((existingRoute) => {
+              const existingSegments = new Set(
+                existingRoute.segments.map(
+                  (s) => `${s.FROMNODENO}-${s.TONODENO}`
+                )
+              );
+              const overlap =
+                [...newSegmentsSet].filter((s) => existingSegments.has(s))
+                  .length / newSegmentsSet.size;
+              maxOverlap = Math.max(maxOverlap, overlap);
+            });
+
+            if (maxOverlap <= 1 - minRouteDifference) {
+              // 3.6. Tính toán chi phí đã điều chỉnh
+              let overlapPenalty = 0;
+              newSegments.forEach((seg) => {
+                const segKey = `${seg.FROMNODENO}-${seg.TONODENO}`;
+                const frequency = segmentUsage.get(segKey) || 0;
+                overlapPenalty += diversityPenaltyBase * (1 + frequency);
+              });
+
+              const adjustedCost =
+                criteria === "healthiest"
+                  ? -newMetrics.health + overlapPenalty
+                  : newMetrics[criteria] + overlapPenalty;
+
+              // 3.7. Thêm vào hàng đợi ưu tiên
+              B.enqueue({
+                path: newPath,
+                segments: newSegments,
+                metrics: newMetrics,
+                geometry: newGeometry,
+                segmentFeatures: newSegmentFeatures,
+                gScore: adjustedCost,
+              });
+            }
+          }
+        }
       }
+
+      if (B.size() === 0) break;
+
+      // 4. Lấy tuyến tốt nhất tiếp theo
+      const nextRoute = B.dequeue();
+      A.push(nextRoute);
+      foundRouteKeys.add(JSON.stringify(nextRoute.path));
+      nextRoute.segments.forEach((seg) => {
+        const key = `${seg.FROMNODENO}-${seg.TONODENO}`;
+        segmentUsage.set(key, (segmentUsage.get(key) || 0) + 1);
+      });
     }
 
-    return allFoundRoutes.map((route, index) => {
-      let finalSegments = route.segments.map((s) => ({
-        ...s,
-        time: this.calculateTime(
-          s.LENGTH,
-          null,
-          s.SPEED,
-          s.FROMNODENO,
-          s.TONODENO,
-          s.VC
-        ),
-      }));
+    // 5. Xử lý kết quả cuối cùng
+    return A.map((route, index) => {
+      let finalSegments;
+      let finalMetrics = route.metrics;
+
+      if (criteria === "healthiest") {
+        finalSegments = this.suggestTransportForSegments(route.segments);
+        const totalHealthScore = finalSegments.reduce(
+          (sum, segment) => sum + (segment.healthScore || 0),
+          0
+        );
+        finalMetrics = { ...route.metrics, health: totalHealthScore };
+      } else {
+        finalSegments = route.segments.map((s) => ({
+          ...s,
+          time: this.calculateTime(
+            s.LENGTH,
+            null,
+            s.SPEED,
+            s.FROMNODENO,
+            s.TONODENO,
+            s.VC
+          ),
+        }));
+      }
 
       return {
         id: `route_${index + 1}`,
         path: route.path,
         segments: finalSegments,
         metrics: {
-          distance: route.metrics.distance,
-          time: route.metrics.time,
-          pollution: route.metrics.pollution,
-          emission: route.metrics.emission,
-          health: route.metrics.health,
+          distance: parseFloat(finalMetrics.distance.toFixed(2)),
+          time: parseFloat(finalMetrics.time.toFixed(2)),
+          pollution: parseFloat(finalMetrics.pollution.toFixed(2)),
+          emission: parseFloat(finalMetrics.emission.toFixed(2)),
+          health: parseFloat(finalMetrics.health.toFixed(2)),
         },
         geometry: route.geometry,
         segmentFeatures: route.segmentFeatures,
         properties: {
-          recommendedModes: [],
+          recommendedModes:
+            criteria === "healthiest"
+              ? finalSegments.map((s) => s.recommendedMode || null)
+              : [],
         },
       };
     });
@@ -508,22 +606,18 @@ class WayFinder {
     console.log(
       `[suggestTransportForSegments] Starting with ${originalSegmentCount} original segments.`
     );
-
     if (originalSegmentCount === 0) {
       console.warn(
         "[suggestTransportForSegments] Input segments array is empty, returning empty array."
       );
       return [];
     }
-
     // Tính tổng chiều dài và mục tiêu đi bộ
     const totalLength = segments.reduce((sum, s) => sum + (s.LENGTH || 0), 0);
     const walkingTarget = Math.min(totalLength, 2.0); // 1/4 tổng chiều dài, tối đa 1 km
     let walkingLength = 0;
-
     const groupedSegmentsByLength = [];
     let currentGroup = null;
-
     // Ngưỡng khoảng cách
     const distanceThresholds = {
       walking: 1.0,
@@ -531,14 +625,12 @@ class WayFinder {
       motorcycle: 30.0,
       driving: Infinity,
     };
-
     // Hàm xác định phương tiện, đảm bảo không lặp lại
     const determineModeByLength = (length, aqiImpact, usedModes) => {
       const aqi = aqiImpact.aqi || 0;
       const availableModes = this.allowedTransportModes.filter(
         (mode) => !usedModes.includes(mode)
       );
-
       if (
         length <= distanceThresholds.walking &&
         availableModes.includes("walking") &&
@@ -568,7 +660,6 @@ class WayFinder {
         ? "driving"
         : availableModes[0] || this.mode;
     };
-
     // Bước 1: Gộp segment dựa trên tọa độ
     segments.forEach((s) => {
       const segmentLength = s.LENGTH || 0;
@@ -577,7 +668,6 @@ class WayFinder {
         s.TONODENO,
         s.geometry
       );
-
       if (!currentGroup) {
         currentGroup = {
           FROMNODENO: s.FROMNODENO,
@@ -603,8 +693,7 @@ class WayFinder {
             turf.point(lastCoordOfPrevGroup),
             turf.point(firstCoordOfCurrentSegment),
             { units: "meters" }
-          ) < 20; // Tăng ngưỡng lên 20 mét
-
+          ) < 20;
         if (!areCoordsClose) {
           if (currentGroup) {
             groupedSegmentsByLength.push(currentGroup);
@@ -656,26 +745,22 @@ class WayFinder {
         }
       }
     });
-
     if (currentGroup) {
       groupedSegmentsByLength.push(currentGroup);
     }
-
     // Bước 2: Hợp nhất thành 2-4 nhóm
     const limitGroups = (groups, minGroups = 2, maxGroups = 4) => {
       if (groups.length <= maxGroups) return groups;
-
       const mergedGroups = [];
       let current = null;
       const totalLength = groups.reduce((sum, g) => sum + g.LENGTH, 0);
       const targetGroupLength = totalLength / maxGroups;
-
       groups.forEach((group) => {
         if (!current) {
           current = { ...group };
         } else if (
           mergedGroups.length < maxGroups - 1 &&
-          current.LENGTH + group.LENGTH <= targetGroupLength * 1.5 && // Hợp nhất nếu không vượt quá 1.5 lần chiều dài mục tiêu
+          current.LENGTH + group.LENGTH <= targetGroupLength * 1.5 &&
           turf.distance(
             turf.point(
               current.geometry.coordinates[
@@ -716,12 +801,9 @@ class WayFinder {
           current = { ...group };
         }
       });
-
       if (current) {
         mergedGroups.push(current);
       }
-
-      // Đảm bảo 2-4 nhóm
       while (mergedGroups.length < minGroups) {
         if (mergedGroups.length <= 1) break;
         mergedGroups[0].TONODENO = mergedGroups[1].TONODENO;
@@ -797,10 +879,8 @@ class WayFinder {
         );
         mergedGroups.splice(mergedGroups.length - 1, 1);
       }
-
       return mergedGroups;
     };
-
     // Bước 3: Gán phương tiện duy nhất và hiển thị chỉ cho nhóm
     const assignUniqueModes = (groups) => {
       const usedModes = [];
@@ -824,13 +904,12 @@ class WayFinder {
           group.LENGTH,
           group.aqiImpact.pm25
         );
-
         return {
           FROMNODENO: group.FROMNODENO,
           TONODENO: group.TONODENO,
           LENGTH: parseFloat(group.LENGTH.toFixed(2)),
           TRAVELTIME: parseFloat(travelTime.toFixed(2)),
-          recommendedMode, // Chỉ hiển thị tại điểm bắt đầu nhóm
+          recommendedMode,
           healthScore: parseFloat(healthScore.toFixed(2)),
           aqiImpact: {
             aqi: parseFloat(group.aqiImpact.aqi.toFixed(2)),
@@ -843,7 +922,6 @@ class WayFinder {
           subSegments: group.subSegments,
         };
       });
-
       // Đảm bảo đi bộ xuất hiện nếu chưa đạt walkingTarget
       if (!usedModes.includes("walking") && walkingLength < walkingTarget) {
         const smallestNonWalkingGroup = result
@@ -866,14 +944,11 @@ class WayFinder {
           );
         }
       }
-
       return result;
     };
-
     // Áp dụng các bước
     let mergedGroups = limitGroups(groupedSegmentsByLength);
     const finalGroupedSegments = assignUniqueModes(mergedGroups);
-
     // Hiển thị phương tiện chỉ tại điểm bắt đầu của mỗi nhóm
     finalGroupedSegments.forEach((group, index) => {
       if (index === 0) {
@@ -886,7 +961,6 @@ class WayFinder {
         );
       }
     });
-
     console.log(
       `[suggestTransportForSegments] Finished. Total grouped segments: ${
         finalGroupedSegments.length
@@ -909,20 +983,15 @@ class WayFinder {
       geometry: { type: "LineString", coordinates: [] },
       segmentFeatures: [],
     });
-
     const gScore = new Map();
     gScore.set(startNodeId, 0);
-
     const cameFrom = new Map();
-
     while (openSet.size() > 0) {
       const current = openSet.dequeue();
       const currentNodeId = current.node;
-
       if (current.gScore > (gScore.get(currentNodeId) || Infinity)) {
         continue;
       }
-
       if (currentNodeId === endNodeId) {
         return {
           path: current.path,
@@ -932,12 +1001,10 @@ class WayFinder {
           segmentFeatures: current.segmentFeatures,
         };
       }
-
       const neighbors = this.graph[currentNodeId] || [];
       for (const { neighbor: neighborNodeId, routeData } of neighbors) {
         const edgeKey = `${currentNodeId}-${neighborNodeId}`;
         if (usedEdges.has(edgeKey)) continue;
-
         const trafficImpact =
           this.simulatedTrafficImpacts.get(edgeKey) ||
           this.simulatedTrafficImpacts.get(
@@ -946,20 +1013,17 @@ class WayFinder {
         if (trafficImpact && trafficImpact.isBlocked) {
           continue;
         }
-
         const { cost: segmentCost, metrics } = this._calculateSegmentCost(
           routeData,
           criteria
         );
         const tentativeGScore = current.gScore + segmentCost;
-
         if (tentativeGScore < (gScore.get(neighborNodeId) || Infinity)) {
           gScore.set(neighborNodeId, tentativeGScore);
           cameFrom.set(neighborNodeId, {
             prev: currentNodeId,
             routeData: routeData,
           });
-
           const newPath = [...current.path, neighborNodeId];
           const newSegments = [...current.segments, routeData];
           const newGeometryCoordinates = [
@@ -973,13 +1037,11 @@ class WayFinder {
             emission: current.metrics.emission + metrics.emission,
             health: current.metrics.health + metrics.health,
           };
-
           const aqiImpactForFeature = this._getAqisImpactForSegment(
             routeData.FROMNODENO,
             routeData.TONODENO,
             routeData.geometry
           );
-
           openSet.enqueue({
             node: neighborNodeId,
             path: newPath,
@@ -1012,7 +1074,6 @@ class WayFinder {
         }
       }
     }
-
     return null;
   }
 }
@@ -1021,16 +1082,13 @@ class PriorityQueue {
   constructor() {
     this.elements = [];
   }
-
   enqueue(element) {
     this.elements.push(element);
     this.elements.sort((a, b) => a.fScore - b.fScore);
   }
-
   dequeue() {
     return this.elements.shift();
   }
-
   size() {
     return this.elements.length;
   }

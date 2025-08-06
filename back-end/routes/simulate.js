@@ -11,18 +11,12 @@ router.use(verifyToken);
  * The simulation data is stored in MongoDB.
  * @access Private (requires JWT token)
  */
-// Thêm vào tệp định tuyến backend của bạn (ví dụ: routes/simulation.js)
-
-// Đảm bảo bạn đã import model UserSimulation:
-// const UserSimulation = require('../models/UserSimulation'); // Điều chỉnh đường dẫn nếu cần
-
-// ... (các endpoint khác của bạn)
 
 // POST /simulate/aqis
 // Mô phỏng chất lượng không khí tại một điểm cụ thể với bán kính ảnh hưởng và các chỉ số ô nhiễm chi tiết
 router.post("/aqis", async (req, res) => {
-  // Giả định req.user.id có sẵn từ middleware xác thực
-  const userId = req.user ? req.user.id : "anonymous"; // Xử lý trường hợp không có user (nếu cho phép)
+  const userId = req.user.id;
+
   const {
     lon,
     lat,
@@ -496,6 +490,33 @@ router.put("/:id/status", async (req, res) => {
 });
 
 /**
+ * @route DELETE /simulate/reset
+ * @desc Deletes ALL simulations owned by the authenticated user.
+ * @access Private (requires JWT token)
+ */
+router.delete("/reset", async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const result = await UserSimulation.deleteMany({ user: userId });
+
+    console.log(
+      `User ${userId} reset all their simulations. Deleted ${result.deletedCount} documents.`
+    );
+    res.json({
+      success: true,
+      message: `All ${result.deletedCount} simulations for user ${userId} have been reset.`,
+    });
+  } catch (error) {
+    console.error(`Error resetting simulations for user ${userId}:`, error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error while resetting simulations.",
+      details: error.message,
+    });
+  }
+});
+
+/**
  * @route DELETE /simulate/:id
  * @desc Deletes a specific simulation owned by the authenticated user.
  * @access Private (requires JWT token)
@@ -528,33 +549,6 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Internal server error while deleting simulation.",
-      details: error.message,
-    });
-  }
-});
-
-/**
- * @route DELETE /simulate/reset
- * @desc Deletes ALL simulations owned by the authenticated user.
- * @access Private (requires JWT token)
- */
-router.delete("/reset", async (req, res) => {
-  const userId = req.user.id;
-  try {
-    const result = await UserSimulation.deleteMany({ user: userId });
-
-    console.log(
-      `User ${userId} reset all their simulations. Deleted ${result.deletedCount} documents.`
-    );
-    res.json({
-      success: true,
-      message: `All ${result.deletedCount} simulations for user ${userId} have been reset.`,
-    });
-  } catch (error) {
-    console.error(`Error resetting simulations for user ${userId}:`, error);
-    res.status(500).json({
-      success: false,
-      error: "Internal server error while resetting simulations.",
       details: error.message,
     });
   }

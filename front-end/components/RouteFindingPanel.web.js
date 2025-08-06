@@ -94,7 +94,7 @@ const RouteFindingPanel = ({
         selectedRoutingCriterionId === "optimal" ||
         selectedRoutingCriterionId === "healthiest"
           ? 1
-          : 5;
+          : 3;
 
       const response = await axios.post(
         `${BACKEND_API_BASE_URL}/find-way`,
@@ -354,6 +354,7 @@ const RouteFindingPanel = ({
           >
             <View style={styles.inputContainer}>
               <View style={styles.inputGroup}>
+                <Text style={styles.title}>WayGenie 🚀</Text>
                 <TextInput
                   ref={startInputRef}
                   style={styles.input}
@@ -698,6 +699,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     padding: 15,
     maxHeight: SCREEN_HEIGHT * 0.8,
+    maxWidth: SCREEN_WIDTH * 0.25,
     overflow: "hidden",
     zIndex: 1,
   },
@@ -715,6 +717,13 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1, paddingBottom: 5 },
   inputContainer: { marginBottom: 10 },
   inputGroup: { marginBottom: 5, position: "relative" },
+  title: {
+    fontSize: 28,
+    fontWeight: "700",
+    marginBottom: 20,
+    textAlign: "center",
+    color: "#333",
+  },
   input: {
     height: 40,
     borderColor: "#ddd",
