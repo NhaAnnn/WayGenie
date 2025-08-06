@@ -471,7 +471,7 @@ export default function RouteManagement({ navigation }) {
     for (const param of vehicleParams) {
       const value = formData[param];
       if (!value || isNaN(value) || parseInt(value) <= 0) {
-        toast.error(`Thông số ${param} phải là số nguyên lớn hơn 0`);
+        toast.error(`Thông số ${param} không hợp lệ`);
         return false;
       }
     }

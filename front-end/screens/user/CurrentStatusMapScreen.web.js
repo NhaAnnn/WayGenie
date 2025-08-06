@@ -18,15 +18,21 @@ import {
   LayoutAnimation,
 } from "react-native";
 import axios from "axios";
-import * as Location from "expo-location";
+import { useAuth } from "../../context/AuthContext"; // Import useAuth
 import { Ionicons } from "@expo/vector-icons";
 import { transportModes } from "../../data/transportModes";
-import { MAPBOX_PUBLIC_ACCESS_TOKEN } from "../../secrets.js";
+import {
+  MAPBOX_PUBLIC_ACCESS_TOKEN,
+  BACKEND_API_BASE_URL,
+} from "../../secrets.js";
 import MapWrapper from "../../components/MapWrapper";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function CurrentStatusMapScreen({ navigation }) {
+  const { user } = useAuth(); // Lấy thông tin user từ AuthContext
+  const userId = user?.id; // Lấy userId từ user, kiểm tra null/undefined
+
   // State for addresses and coordinates
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -56,6 +62,7 @@ export default function CurrentStatusMapScreen({ navigation }) {
   });
 
   const [isError, setIsError] = useState(false);
+  const SEARCH_ROUTE_API_URL = `${BACKEND_API_BASE_URL}/search-route`;
 
   // Data for map layers - initialized as empty
   const [trafficData, setTrafficData] = useState({
@@ -83,12 +90,10 @@ export default function CurrentStatusMapScreen({ navigation }) {
 
   // Fetch route when mode or preference changes
   useEffect(() => {
-    if (startCoords && endCoords) {
+    if (startCoords && endCoords && userId) {
       fetchRoute();
     }
-  }, [mode, routePreference, startCoords, endCoords]);
-
-  // Toggle layer visibility
+  }, [mode, routePreference, startCoords, endCoords, userId]);
 
   // Handle address autocomplete
   const handleAutocomplete = async (text, inputType) => {
@@ -186,10 +191,10 @@ export default function CurrentStatusMapScreen({ navigation }) {
     return sortedRoutes;
   }, []);
 
-  // Fetch routes from Mapbox API
+  // Fetch routes from Mapbox API and send to backend for stats
   const fetchRoute = async () => {
-    if (!startCoords || !endCoords) {
-      setError("Vui lòng chọn điểm đi và điểm đến.");
+    if (!startCoords || !endCoords || !userId) {
+      setError("Vui lòng chọn điểm đi và điểm đến, hoặc đăng nhập.");
       return;
     }
     setLoading(true);
@@ -236,6 +241,21 @@ export default function CurrentStatusMapScreen({ navigation }) {
         }));
         routesData = sortRoutesByPreference(routesData, routePreference);
         setRoutes(routesData);
+
+        // Gửi dữ liệu thống kê lên server
+        const dateKey = new Date().toLocaleDateString("en-CA", {
+          timeZone: "Asia/Ho_Chi_Minh",
+        });
+        await axios
+          .post(SEARCH_ROUTE_API_URL, {
+            userID: userId,
+            description: `${start} -> ${end}`,
+            time: new Date().toISOString(),
+            dateKey: dateKey,
+          })
+          .catch((err) => {
+            console.error("Failed to save search route:", err);
+          });
       } else {
         setError("Không tìm thấy tuyến đường phù hợp");
       }

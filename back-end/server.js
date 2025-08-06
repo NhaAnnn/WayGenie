@@ -61,6 +61,7 @@ const simulateRoutes = require("./routes/simulate");
 const scenario = require("./routes/scenarios");
 const findWay = require("./routes/findWay");
 const forgotPasswordRoutes = require("./routes/forgotPassword");
+const SearchRoute = require("./routes/searchRoute");
 
 app.use("/api/coordinates", coordinateRoutes);
 app.use("/api/routes", routeRoutes);
@@ -71,106 +72,107 @@ app.use("/api/simulate", simulateRoutes);
 app.use("/api/find-way", findWay);
 app.use("/api/scenarios", scenario);
 app.use("/api/forgot", forgotPasswordRoutes);
+app.use("/api/search-route", SearchRoute);
 
-app.post(
-  "/api/upload",
-  upload.fields([
-    { name: "nodeFile", maxCount: 1 },
-    { name: "linkFile", maxCount: 1 },
-    { name: "shapefile", maxCount: 5 },
-  ]),
-  async (req, res, next) => {
-    try {
-      console.log("Files received:", JSON.stringify(req.files, null, 2));
-      const files = req.files;
+// app.post(
+//   "/api/upload",
+//   upload.fields([
+//     { name: "nodeFile", maxCount: 1 },
+//     { name: "linkFile", maxCount: 1 },
+//     { name: "shapefile", maxCount: 5 },
+//   ]),
+//   async (req, res, next) => {
+//     try {
+//       console.log("Files received:", JSON.stringify(req.files, null, 2));
+//       const files = req.files;
 
-      if (!files.nodeFile || !files.linkFile || !files.shapefile) {
-        return res.status(400).json({
-          error:
-            "Vui lòng tải lên đầy đủ node.csv, link.csv và tất cả các file shapefile (.shp, .shx, .dbf, .prj, .ctf).",
-        });
-      }
+//       if (!files.nodeFile || !files.linkFile || !files.shapefile) {
+//         return res.status(400).json({
+//           error:
+//             "Vui lòng tải lên đầy đủ node.csv, link.csv và tất cả các file shapefile (.shp, .shx, .dbf, .prj, .ctf).",
+//         });
+//       }
 
-      if (files.shapefile.length !== 5) {
-        return res.status(400).json({
-          error:
-            "Phải tải lên đúng 5 file shapefile (.shp, .shx, .dbf, .prj, .ctf).",
-        });
-      }
+//       if (files.shapefile.length !== 5) {
+//         return res.status(400).json({
+//           error:
+//             "Phải tải lên đúng 5 file shapefile (.shp, .shx, .dbf, .prj, .ctf).",
+//         });
+//       }
 
-      const shapefileFiles = files.shapefile.map((f) =>
-        f.originalname.toLowerCase()
-      );
-      console.log("Shapefile names:", shapefileFiles);
+//       const shapefileFiles = files.shapefile.map((f) =>
+//         f.originalname.toLowerCase()
+//       );
+//       console.log("Shapefile names:", shapefileFiles);
 
-      const requiredShapefileExts = [".shp", ".shx", ".dbf", ".prj", ".ctf"];
-      const missingExts = requiredShapefileExts.filter(
-        (ext) => !shapefileFiles.some((f) => f.endsWith(ext))
-      );
+//       const requiredShapefileExts = [".shp", ".shx", ".dbf", ".prj", ".ctf"];
+//       const missingExts = requiredShapefileExts.filter(
+//         (ext) => !shapefileFiles.some((f) => f.endsWith(ext))
+//       );
 
-      if (missingExts.length > 0) {
-        return res.status(400).json({
-          error: `Thiếu các file shapefile bắt buộc: ${missingExts.join(
-            ", "
-          )}.`,
-        });
-      }
+//       if (missingExts.length > 0) {
+//         return res.status(400).json({
+//           error: `Thiếu các file shapefile bắt buộc: ${missingExts.join(
+//             ", "
+//           )}.`,
+//         });
+//       }
 
-      console.log(
-        "Tất cả các file shapefile cần thiết đã được tải lên:",
-        shapefileFiles
-      );
+//       console.log(
+//         "Tất cả các file shapefile cần thiết đã được tải lên:",
+//         shapefileFiles
+//       );
 
-      const BASE_DATA_PATH = path.join(__dirname, "uploads");
-      const nodeFilePath = files.nodeFile[0]?.filename
-        ? path.join(BASE_DATA_PATH, files.nodeFile[0].filename)
-        : null;
-      const linkFilePath = files.linkFile[0]?.filename
-        ? path.join(BASE_DATA_PATH, files.linkFile[0].filename)
-        : null;
-      const shpFile = files.shapefile.find((f) =>
-        f.originalname.toLowerCase().endsWith(".shp")
-      );
-      const shapeFilePath = shpFile
-        ? path.join(BASE_DATA_PATH, shpFile.filename)
-        : null;
+//       const BASE_DATA_PATH = path.join(__dirname, "uploads");
+//       const nodeFilePath = files.nodeFile[0]?.filename
+//         ? path.join(BASE_DATA_PATH, files.nodeFile[0].filename)
+//         : null;
+//       const linkFilePath = files.linkFile[0]?.filename
+//         ? path.join(BASE_DATA_PATH, files.linkFile[0].filename)
+//         : null;
+//       const shpFile = files.shapefile.find((f) =>
+//         f.originalname.toLowerCase().endsWith(".shp")
+//       );
+//       const shapeFilePath = shpFile
+//         ? path.join(BASE_DATA_PATH, shpFile.filename)
+//         : null;
 
-      if (!nodeFilePath || !linkFilePath || !shapeFilePath) {
-        return res.status(400).json({
-          error: `Thiếu đường dẫn file: nodeFile=${nodeFilePath}, linkFile=${linkFilePath}, shapeFile=${shapeFilePath}`,
-        });
-      }
+//       if (!nodeFilePath || !linkFilePath || !shapeFilePath) {
+//         return res.status(400).json({
+//           error: `Thiếu đường dẫn file: nodeFile=${nodeFilePath}, linkFile=${linkFilePath}, shapeFile=${shapeFilePath}`,
+//         });
+//       }
 
-      await processData(nodeFilePath, linkFilePath, shapeFilePath);
+//       await processData(nodeFilePath, linkFilePath, shapeFilePath);
 
-      await Promise.all([
-        fs
-          .unlink(nodeFilePath)
-          .catch((err) =>
-            console.warn(`Không thể xóa ${nodeFilePath}: ${err.message}`)
-          ),
-        fs
-          .unlink(linkFilePath)
-          .catch((err) =>
-            console.warn(`Không thể xóa ${linkFilePath}: ${err.message}`)
-          ),
-        ...files.shapefile.map((f) =>
-          fs
-            .unlink(path.join(BASE_DATA_PATH, f.filename))
-            .catch((err) =>
-              console.warn(`Không thể xóa ${f.filename}: ${err.message}`)
-            )
-        ),
-      ]);
+//       await Promise.all([
+//         fs
+//           .unlink(nodeFilePath)
+//           .catch((err) =>
+//             console.warn(`Không thể xóa ${nodeFilePath}: ${err.message}`)
+//           ),
+//         fs
+//           .unlink(linkFilePath)
+//           .catch((err) =>
+//             console.warn(`Không thể xóa ${linkFilePath}: ${err.message}`)
+//           ),
+//         ...files.shapefile.map((f) =>
+//           fs
+//             .unlink(path.join(BASE_DATA_PATH, f.filename))
+//             .catch((err) =>
+//               console.warn(`Không thể xóa ${f.filename}: ${err.message}`)
+//             )
+//         ),
+//       ]);
 
-      res
-        .status(200)
-        .json({ message: "Dữ liệu đã được xử lý và lưu vào MongoDB." });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
+//       res
+//         .status(200)
+//         .json({ message: "Dữ liệu đã được xử lý và lưu vào MongoDB." });
+//     } catch (error) {
+//       next(error);
+//     }
+//   }
+// );
 
 app.get("/", (req, res) => {
   res.send("WayGenie Backend API đang chạy!");
@@ -191,7 +193,6 @@ mongoose
   .connect(MONGODB_URI)
   .then(() => {
     console.log("Kết nối MongoDB thành công!");
-
     // Chạy lần đầu tiên khi server khởi động
     fetchAllHanoiAQIData();
 

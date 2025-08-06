@@ -146,7 +146,9 @@ const UploadScreen = ({ navigation }) => {
       </TouchableWithoutFeedback>
 
       <View style={styles.contentContainer}>
-        <Text style={styles.title}>Quản lý Tải Tọa Độ Tuyến Đường</Text>
+        <Text style={styles.title}>
+          Tải Dữ Liệu Tuyến Đường Giao Thông Từ File
+        </Text>
 
         <View style={styles.inputContainer}>
           <Text style={styles.label}>Tệp node.csv:</Text>

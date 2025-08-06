@@ -11,6 +11,7 @@ import {
   Dimensions,
   SafeAreaView,
   TouchableWithoutFeedback,
+  Modal,
 } from "react-native";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import {
@@ -66,12 +67,76 @@ export default function StationManagement({ navigation }) {
   });
   const [isSelectingPosition, setIsSelectingPosition] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState(null);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [stationToDelete, setStationToDelete] = useState(null);
 
   const { width: screenWidth } = Dimensions.get("window");
   const sidebarWidth = Platform.select({
     web: 500,
     default: screenWidth * 0.8,
   });
+
+  // Validate coordinates
+  const validateCoordinates = (longitude, latitude) => {
+    // Check if longitude is valid (-180 to 180)
+    const lng = parseFloat(longitude);
+    if (isNaN(lng)) {
+      toast.error("Kinh độ phải là số hợp lệ");
+      return false;
+    }
+    if (lng < -180 || lng > 180) {
+      toast.error("Kinh độ phải nằm trong khoảng -180 đến 180");
+      return false;
+    }
+
+    // Check if latitude is valid (-90 to 90)
+    const lat = parseFloat(latitude);
+    if (isNaN(lat)) {
+      toast.error("Vĩ độ phải là số hợp lệ");
+      return false;
+    }
+    if (lat < -90 || lat > 90) {
+      toast.error("Vĩ độ phải nằm trong khoảng -90 đến 90");
+      return false;
+    }
+
+    return true;
+  };
+
+  // Validate station data
+  const validateStationData = (data) => {
+    // Check station name
+    if (!data.stationName || data.stationName.trim().length === 0) {
+      toast.error("Vui lòng nhập tên trạm");
+      return false;
+    }
+    if (data.stationName.trim().length < 3) {
+      toast.error("Tên trạm phải có ít nhất 3 ký tự");
+      return false;
+    }
+
+    // Check coordinates
+    if (!data.longitude || !data.latitude) {
+      toast.error("Vui lòng nhập đầy đủ kinh độ và vĩ độ");
+      return false;
+    }
+    if (!validateCoordinates(data.longitude, data.latitude)) {
+      return false;
+    }
+
+    // Validate air quality data
+    const requiredFields = ["aqi", "pm25", "pm10", "co", "no2", "so2", "o3"];
+    for (const field of requiredFields) {
+      const value = parseFloat(data[field]);
+
+      if (value < 0) {
+        toast.error(`Giá trị ${field.toUpperCase()} phải lớn hơn hoặc bằng 0`);
+        return false;
+      }
+    }
+
+    return true;
+  };
 
   // Fetch data from API
   const fetchData = useCallback(async () => {
@@ -143,20 +208,7 @@ export default function StationManagement({ navigation }) {
 
   // Handle form submission for new station
   const handleCreateStation = async () => {
-    if (
-      !newStationForm.stationName ||
-      !newStationForm.longitude ||
-      !newStationForm.latitude
-    ) {
-      toast.error("Vui lòng điền đầy đủ tên trạm và tọa độ");
-      return;
-    }
-
-    const longitude = parseFloat(newStationForm.longitude);
-    const latitude = parseFloat(newStationForm.latitude);
-
-    if (isNaN(longitude) || isNaN(latitude)) {
-      toast.error("Kinh độ và vĩ độ phải là số hợp lệ");
+    if (!validateStationData(newStationForm)) {
       return;
     }
 
@@ -174,7 +226,10 @@ export default function StationManagement({ navigation }) {
           stationName: newStationForm.stationName,
           location: {
             type: "Point",
-            coordinates: [longitude, latitude],
+            coordinates: [
+              parseFloat(newStationForm.longitude),
+              parseFloat(newStationForm.latitude),
+            ],
           },
           aqi: parseFloat(newStationForm.aqi) || 0,
           pm25: parseFloat(newStationForm.pm25) || 0,
@@ -211,6 +266,10 @@ export default function StationManagement({ navigation }) {
   const handleUpdateStation = async (stationData) => {
     if (!stationData._id || !stationData.stationUid) {
       toast.error("Thiếu ID trạm");
+      return;
+    }
+
+    if (!validateStationData(stationData)) {
       return;
     }
 
@@ -265,18 +324,24 @@ export default function StationManagement({ navigation }) {
     }
   };
 
-  // Handle station deletion
-  const deleteStation = async (id) => {
-    if (!id) {
-      toast.error("Thiếu ID trạm");
-      return;
-    }
+  // Handle delete confirmation
+  const handleDelete = (station) => {
+    setStationToDelete(station);
+    setIsDeleteModalVisible(true);
+  };
+
+  // Confirm delete station
+  const confirmDelete = async () => {
+    if (!stationToDelete) return;
 
     try {
       setLoading(true);
-      const response = await fetch(`${AIR_QUALITY_API_URL}/${id}`, {
-        method: "DELETE",
-      });
+      const response = await fetch(
+        `${AIR_QUALITY_API_URL}/${stationToDelete._id}`,
+        {
+          method: "DELETE",
+        }
+      );
 
       if (!response.ok) {
         const data = await response.json();
@@ -284,8 +349,8 @@ export default function StationManagement({ navigation }) {
       }
 
       toast.success("Đã xóa trạm quan trắc thành công");
-      setIsFormVisible(false);
-      setSearchQuery("");
+      setIsDeleteModalVisible(false);
+      setStationToDelete(null);
       fetchData();
     } catch (error) {
       toast.error(`Lỗi khi xóa trạm: ${error.message}`);
@@ -293,6 +358,12 @@ export default function StationManagement({ navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Cancel delete action
+  const cancelDelete = () => {
+    setIsDeleteModalVisible(false);
+    setStationToDelete(null);
   };
 
   // Reset form
@@ -480,22 +551,23 @@ export default function StationManagement({ navigation }) {
               )}
 
               {/* Form fields */}
-              <Text style={styles.inputLabel}>Tên trạm</Text>
+              <Text style={styles.inputLabel}>Tên trạm*</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Tên trạm*"
+                placeholder="Tên trạm (tối thiểu 3 ký tự)"
                 value={newStationForm.stationName}
                 onChangeText={(text) =>
                   setNewStationForm({ ...newStationForm, stationName: text })
                 }
+                maxLength={50}
               />
 
-              <Text style={styles.inputLabel}>Tọa độ</Text>
+              <Text style={styles.inputLabel}>Tọa độ*</Text>
               <View style={styles.coordinateRow}>
                 <View style={styles.nodeInputContainer}>
                   <TextInput
                     style={[styles.input, styles.nodeInput]}
-                    placeholder="Kinh độ*"
+                    placeholder="Kinh độ (-180 đến 180)"
                     keyboardType="numeric"
                     value={newStationForm.longitude}
                     onChangeText={(text) =>
@@ -508,7 +580,7 @@ export default function StationManagement({ navigation }) {
                 <View style={styles.nodeInputContainer}>
                   <TextInput
                     style={[styles.input, styles.nodeInput]}
-                    placeholder="Vĩ độ*"
+                    placeholder="Vĩ độ (-90 đến 90)"
                     keyboardType="numeric"
                     value={newStationForm.latitude}
                     onChangeText={(text) =>
@@ -532,10 +604,13 @@ export default function StationManagement({ navigation }) {
                 </TouchableWithoutFeedback>
               </View>
 
-              <Text style={styles.inputLabel}>Chỉ số AQI</Text>
+              <Text style={styles.inputLabel}>Chỉ số AQI*</Text>
               <TextInput
-                style={styles.input}
-                placeholder="Chỉ số AQI"
+                style={[
+                  styles.input,
+                  !newStationForm.aqi || isNaN(parseFloat(newStationForm.aqi)),
+                ]}
+                placeholder="Nhập chỉ số AQI"
                 keyboardType="numeric"
                 value={newStationForm.aqi}
                 onChangeText={(text) =>
@@ -544,13 +619,18 @@ export default function StationManagement({ navigation }) {
                 }
               />
 
-              <Text style={styles.inputLabel}>Chất lượng không khí</Text>
+              <Text style={styles.inputLabel}>Chất lượng không khí*</Text>
               <View style={styles.airQualityRow}>
                 <View style={styles.nodeInputContainer}>
                   <Text style={styles.airQualityLabel}>PM2.5</Text>
                   <TextInput
-                    style={[styles.input, styles.nodeInput]}
-                    placeholder="PM2.5"
+                    style={[
+                      styles.input,
+                      styles.nodeInput,
+                      !newStationForm.pm25 ||
+                        isNaN(parseFloat(newStationForm.pm25)),
+                    ]}
+                    placeholder="Nhập PM2.5"
                     keyboardType="numeric"
                     value={newStationForm.pm25}
                     onChangeText={(text) =>
@@ -562,8 +642,13 @@ export default function StationManagement({ navigation }) {
                 <View style={styles.nodeInputContainer}>
                   <Text style={styles.airQualityLabel}>PM10</Text>
                   <TextInput
-                    style={[styles.input, styles.nodeInput]}
-                    placeholder="PM10"
+                    style={[
+                      styles.input,
+                      styles.nodeInput,
+                      !newStationForm.pm10 ||
+                        isNaN(parseFloat(newStationForm.pm10)),
+                    ]}
+                    placeholder="Nhập PM10"
                     keyboardType="numeric"
                     value={newStationForm.pm10}
                     onChangeText={(text) =>
@@ -578,8 +663,13 @@ export default function StationManagement({ navigation }) {
                 <View style={styles.nodeInputContainer}>
                   <Text style={styles.airQualityLabel}>CO</Text>
                   <TextInput
-                    style={[styles.input, styles.nodeInput]}
-                    placeholder="CO"
+                    style={[
+                      styles.input,
+                      styles.nodeInput,
+                      !newStationForm.co ||
+                        isNaN(parseFloat(newStationForm.co)),
+                    ]}
+                    placeholder="Nhập CO"
                     keyboardType="numeric"
                     value={newStationForm.co}
                     onChangeText={(text) =>
@@ -591,8 +681,13 @@ export default function StationManagement({ navigation }) {
                 <View style={styles.nodeInputContainer}>
                   <Text style={styles.airQualityLabel}>NO2</Text>
                   <TextInput
-                    style={[styles.input, styles.nodeInput]}
-                    placeholder="NO2"
+                    style={[
+                      styles.input,
+                      styles.nodeInput,
+                      !newStationForm.no2 ||
+                        isNaN(parseFloat(newStationForm.no2)),
+                    ]}
+                    placeholder="Nhập NO2"
                     keyboardType="numeric"
                     value={newStationForm.no2}
                     onChangeText={(text) =>
@@ -607,8 +702,13 @@ export default function StationManagement({ navigation }) {
                 <View style={styles.nodeInputContainer}>
                   <Text style={styles.airQualityLabel}>SO2</Text>
                   <TextInput
-                    style={[styles.input, styles.nodeInput]}
-                    placeholder="SO2"
+                    style={[
+                      styles.input,
+                      styles.nodeInput,
+                      !newStationForm.so2 ||
+                        isNaN(parseFloat(newStationForm.so2)),
+                    ]}
+                    placeholder="Nhập SO2"
                     keyboardType="numeric"
                     value={newStationForm.so2}
                     onChangeText={(text) =>
@@ -620,8 +720,13 @@ export default function StationManagement({ navigation }) {
                 <View style={styles.nodeInputContainer}>
                   <Text style={styles.airQualityLabel}>O3</Text>
                   <TextInput
-                    style={[styles.input, styles.nodeInput]}
-                    placeholder="O3"
+                    style={[
+                      styles.input,
+                      styles.nodeInput,
+                      !newStationForm.o3 ||
+                        isNaN(parseFloat(newStationForm.o3)),
+                    ]}
+                    placeholder="Nhập O3"
                     keyboardType="numeric"
                     value={newStationForm.o3}
                     onChangeText={(text) =>
@@ -633,45 +738,47 @@ export default function StationManagement({ navigation }) {
               </View>
 
               <View style={styles.formButtons}>
-                <TouchableWithoutFeedback onPress={resetForm}>
-                  <View style={[styles.formButton, styles.cancelButton]}>
-                    <Text style={styles.buttonText}>Hủy</Text>
-                  </View>
-                </TouchableWithoutFeedback>
-                <TouchableWithoutFeedback
-                  onPress={() => {
-                    const stationData = {
-                      ...newStationForm,
-                      _id: selectedStation?._id,
-                      stationUid: selectedStation?.stationUid || Date.now(),
-                      location: {
-                        type: "Point",
-                        coordinates: [
-                          parseFloat(newStationForm.longitude),
-                          parseFloat(newStationForm.latitude),
-                        ],
-                      },
-                      time: new Date().toISOString(),
-                    };
+                <View style={styles.buttonGroup}>
+                  <TouchableWithoutFeedback onPress={resetForm}>
+                    <View style={[styles.formButton, styles.cancelButton]}>
+                      <Text style={styles.buttonText}>Hủy</Text>
+                    </View>
+                  </TouchableWithoutFeedback>
+                  <TouchableWithoutFeedback
+                    onPress={() => {
+                      const stationData = {
+                        ...newStationForm,
+                        _id: selectedStation?._id,
+                        stationUid: selectedStation?.stationUid || Date.now(),
+                        location: {
+                          type: "Point",
+                          coordinates: [
+                            parseFloat(newStationForm.longitude),
+                            parseFloat(newStationForm.latitude),
+                          ],
+                        },
+                        time: new Date().toISOString(),
+                      };
 
-                    if (selectedStation) {
-                      handleUpdateStation(stationData);
-                    } else {
-                      handleCreateStation();
-                    }
-                  }}
-                  disabled={loading}
-                >
-                  <View style={[styles.formButton, styles.saveButton]}>
-                    {loading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.buttonText}>
-                        {selectedStation ? "Cập nhật" : "Lưu"}
-                      </Text>
-                    )}
-                  </View>
-                </TouchableWithoutFeedback>
+                      if (selectedStation) {
+                        handleUpdateStation(stationData);
+                      } else {
+                        handleCreateStation();
+                      }
+                    }}
+                    disabled={loading}
+                  >
+                    <View style={[styles.formButton, styles.saveButton]}>
+                      {loading ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.buttonText}>
+                          {selectedStation ? "Cập nhật" : "Lưu"}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableWithoutFeedback>
+                </View>
               </View>
             </ScrollView>
           ) : (
@@ -694,7 +801,7 @@ export default function StationManagement({ navigation }) {
                           : station.stationName}
                       </Text>
                       <Text style={styles.stationSubText}>
-                        AQI: {station.aqi || "N/A"} | ID: {station.stationUid}
+                        AQI: {station.aqi || "N/A"}
                       </Text>
                     </View>
                     <View style={styles.iconGroup}>
@@ -735,7 +842,7 @@ export default function StationManagement({ navigation }) {
                         </View>
                       </TouchableWithoutFeedback>
                       <TouchableWithoutFeedback
-                        onPress={() => deleteStation(station._id)}
+                        onPress={() => handleDelete(station)}
                       >
                         <View style={styles.actionButton}>
                           <MaterialIcons
@@ -754,31 +861,45 @@ export default function StationManagement({ navigation }) {
         </View>
       )}
 
-      {/* Layer controls */}
-      <View style={styles.floatingLayerControlsLeft}>
-        <Text style={styles.controlPanelTitle}>Lớp dữ liệu:</Text>
-        <View style={styles.layerButtonsContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {Object.keys(layersVisibility).map((key) => (
-              <TouchableWithoutFeedback
-                key={key}
-                onPress={() => toggleLayer(key)}
+      {/* Delete confirmation modal */}
+      <Modal
+        animationType="none"
+        transparent={true}
+        visible={isDeleteModalVisible}
+        onRequestClose={cancelDelete}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.deleteModalContent}>
+            <Text style={styles.deleteModalText}>
+              Bạn chắc chắn muốn xóa trạm quan trắc này?
+            </Text>
+            {stationToDelete && (
+              <View style={styles.deleteInfoContainer}>
+                <Text style={styles.deleteInfoText}>
+                  Tên trạm: {stationToDelete.stationName}
+                </Text>
+                <Text style={styles.deleteInfoText}>
+                  AQI: {stationToDelete.aqi}
+                </Text>
+              </View>
+            )}
+            <View style={styles.deleteModalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.deleteButton]}
+                onPress={confirmDelete}
               >
-                <View
-                  style={[
-                    styles.layerButton,
-                    layersVisibility[key] ? styles.layerButtonActive : {},
-                  ]}
-                >
-                  <Text style={styles.layerButtonText}>
-                    {key === "airQuality" ? "Chất lượng không khí" : "Tọa độ"}
-                  </Text>
-                </View>
-              </TouchableWithoutFeedback>
-            ))}
-          </ScrollView>
+                <Text style={styles.modalButtonText}>Xóa trạm</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={cancelDelete}
+              >
+                <Text style={styles.modalButtonText}>Hủy</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-      </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -976,7 +1097,7 @@ const styles = StyleSheet.create({
   selectNodeButton: {
     width: 40,
     height: 40,
-    marginBottom: 15,
+    marginBottom: 10,
     marginRight: 10,
     borderRadius: 4,
     backgroundColor: "#f0f0f0",
@@ -996,17 +1117,26 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     marginTop: 20,
   },
+  buttonGroup: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
   formButton: {
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 4,
     marginLeft: 10,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
   },
   cancelButton: {
     backgroundColor: "#ccc",
+    width: 100,
   },
   saveButton: {
     backgroundColor: "#1E90FF",
+    width: 100,
   },
   buttonText: {
     color: "#fff",
@@ -1023,57 +1153,62 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginBottom: 5,
   },
-  floatingLayerControlsLeft: {
-    position: "absolute",
-    bottom: Platform.OS === "ios" ? 30 : 20,
-    left: 15,
-    backgroundColor: "rgba(255, 255, 255, 0.98)",
-    borderRadius: 20,
-    padding: 10,
-    flexDirection: "column",
-    alignItems: "flex-start",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 10,
-    zIndex: 5,
+  modalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
-  controlPanelTitle: {
-    fontSize: 15,
-    fontWeight: "bold",
-    marginBottom: 5,
-    color: "#2c3e50",
-    textAlign: "left",
+  deleteModalContent: {
+    width: 450,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 20,
+    alignItems: "center",
   },
-  layerButtonsContainer: {
-    flexDirection: "row",
-    marginBottom: 5,
-    flexWrap: "wrap",
-    justifyContent: "flex-start",
-  },
-  layerButton: {
-    backgroundColor: "#e0e0e0",
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 18,
-    marginTop: 5,
-    marginRight: 8,
-    borderWidth: 0,
-    alignSelf: "flex-start",
-  },
-  layerButtonActive: {
-    backgroundColor: "#3498db",
-    borderColor: "#3498db",
-    shadowColor: "#3498db",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  layerButtonText: {
+  deleteModalText: {
+    fontSize: 20,
+    fontFamily: "Sans-serif",
     color: "black",
-    fontWeight: "600",
-    fontSize: 13,
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  deleteInfoContainer: {
+    paddingLeft: 30,
+    marginBottom: 20,
+    alignItems: "flex-start",
+    width: "100%",
+  },
+  deleteInfoText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "black",
+    marginLeft: -20,
+    marginBottom: 5,
+  },
+  deleteModalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  modalButton: {
+    backgroundColor: "#2196F3",
+    padding: 12,
+    borderRadius: 6,
+    alignItems: "center",
+  },
+  modalButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  deleteButton: {
+    backgroundColor: "#F44336",
+    flex: 1,
+    marginRight: 10,
+  },
+  cancelButton: {
+    backgroundColor: "#9E9E9E",
+    flex: 1,
+    marginLeft: 10,
   },
 });

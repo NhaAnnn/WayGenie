@@ -17,7 +17,7 @@ import { BACKEND_API_BASE_URL } from "../../secrets";
 import { Ionicons } from "@expo/vector-icons";
 
 const ProfileUpdate = () => {
-  const { authToken, user } = useAuth();
+  const { authToken, user, updateUser } = useAuth();
   const navigation = useNavigation();
   const [formData, setFormData] = useState({
     username: "",
@@ -31,12 +31,13 @@ const ProfileUpdate = () => {
   // Fetch user information when the screen loads
   useEffect(() => {
     if (user) {
-      setFormData({
+      const initialFormData = {
         username: user.username || "",
         email: user.email || "",
         phone: user.phone || "",
         address: user.address || "",
-      });
+      };
+      setFormData(initialFormData);
       setIsDataLoading(false);
     } else {
       setIsDataLoading(false);
@@ -53,7 +54,10 @@ const ProfileUpdate = () => {
 
   // Handle input changes
   const handleInputChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const newFormData = { ...prev, [field]: value };
+      return newFormData;
+    });
   };
 
   // Validate email format
@@ -64,17 +68,24 @@ const ProfileUpdate = () => {
 
   // Validate phone number format
   const isValidPhone = (phone) => {
-    // Allow empty phone (optional field) or valid phone formats
-    // Accepts formats like: +1234567890, 1234567890, 123-456-7890, (123) 456-7890
-    if (!phone) return true;
     const phoneRegex = /^(\+?\d{1,3}[- ]?)?\d{3}[- ]?\d{3}[- ]?\d{4}$/;
     return phoneRegex.test(phone);
   };
 
+  // Validate address format
+  const isValidAddress = (address) => {
+    return address.length >= 3 && address.length <= 200;
+  };
+
   // Submit updated user information
   const handleUpdate = async () => {
-    if (!formData.username || !formData.email) {
-      toast.error("Tên người dùng và email là bắt buộc.", {
+    if (
+      !formData.username ||
+      !formData.email ||
+      !formData.phone ||
+      !formData.address
+    ) {
+      toast.error("Vui lòng điền đầy đủ tất cả các trường.", {
         position: "top-right",
         autoClose: 3000,
       });
@@ -91,6 +102,14 @@ const ProfileUpdate = () => {
 
     if (!isValidPhone(formData.phone)) {
       toast.error("Số điện thoại không hợp lệ.", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      return;
+    }
+
+    if (!isValidAddress(formData.address)) {
+      toast.error("Địa chỉ phải từ 3 ký tự trở lên.", {
         position: "top-right",
         autoClose: 3000,
       });
@@ -114,18 +133,40 @@ const ProfileUpdate = () => {
       });
 
       const data = await response.json();
+
       if (!response.ok) {
         throw new Error(data.message || "Lỗi khi cập nhật thông tin.");
+      }
+
+      if (!data.user) {
+        throw new Error("Dữ liệu người dùng không được trả về từ API.");
+      }
+
+      const updatedFormData = {
+        username: data.user.username || "",
+        email: data.user.email || "",
+        phone: data.user.phone || "",
+        address: data.user.address || "",
+      };
+      setFormData(updatedFormData);
+
+      if (updateUser) {
+        const updatedUser = {
+          ...user,
+          username: data.user.username || "",
+          email: data.user.email || "",
+          phone: data.user.phone || "",
+          address: data.user.address || "",
+          role: data.user.role || user.role,
+        };
+        updateUser(updatedUser);
       }
 
       toast.success("Thông tin cá nhân của bạn đã được cập nhật.", {
         position: "top-right",
         autoClose: 2000,
       });
-
-      // navigation.goBack();
     } catch (error) {
-      console.error("Lỗi cập nhật:", error.message, error.stack);
       toast.error(error.message || "Không thể cập nhật thông tin.", {
         position: "top-right",
         autoClose: 3000,
@@ -162,12 +203,12 @@ const ProfileUpdate = () => {
       >
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Tên người dùng</Text>
+            <Text style={styles.label}>Username</Text>
             <TextInput
               style={styles.input}
               value={formData.username}
               onChangeText={(value) => handleInputChange("username", value)}
-              placeholder="Nhập tên người dùng"
+              placeholder="Nhập username"
               placeholderTextColor="#999"
               autoCapitalize="none"
             />
@@ -272,8 +313,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     marginBottom: 20,
-    width: "50%", // Match the button's width
-    alignSelf: "center", // Center the form horizontally
+    width: "50%",
+    alignSelf: "center",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
@@ -303,7 +344,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: "#ffffff",
     color: "#333",
-    width: "100%", // Ensure input fields take full width of the form
+    width: "100%",
   },
   buttonContainer: {
     alignItems: "center",
@@ -314,7 +355,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     borderRadius: 8,
     alignItems: "center",
-    width: "50%", // Button width remains unchanged
+    width: "50%",
     ...Platform.select({
       ios: {
         shadowColor: "#000",

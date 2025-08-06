@@ -74,6 +74,8 @@ router.post("/register", async (req, res) => {
         username: newUser.username,
         email: newUser.email,
         role: newUser.role,
+        phone: "", // Thêm mặc định để đảm bảo
+        address: "", // Thêm mặc định để đảm bảo
       },
     });
   } catch (err) {
@@ -101,7 +103,9 @@ router.post("/login", async (req, res) => {
 
     const isMatch = await user.matchPassword(password); // Sử dụng phương thức matchPassword từ User model
     if (!isMatch) {
-      return res.status(400).json({ message: "Mật khẩu không đúng." });
+      return res
+        .status(400)
+        .json({ message: "Email hoặc mật khẩu không đúng." });
     }
 
     if (!JWT_SECRET) {
@@ -118,6 +122,8 @@ router.post("/login", async (req, res) => {
         username: user.username,
         email: user.email,
         role: user.role,
+        phone: user.phone || "", // Thêm mặc định để đảm bảo
+        address: user.address || "", // Thêm mặc định để đảm bảo
       },
     });
   } catch (err) {
@@ -141,6 +147,7 @@ router.get("/", verifyToken, verifyAdmin, async (req, res) => {
 });
 
 // 4. Lấy thông tin một người dùng cụ thể (Có thể dùng cho người dùng tự xem hoặc admin xem)
+// GET /auth/:id
 router.get("/:id", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select("-password");
@@ -152,12 +159,63 @@ router.get("/:id", verifyToken, async (req, res) => {
         message: "Bạn không có quyền truy cập thông tin người dùng này.",
       });
     }
-    res.status(200).json(user);
+    res.status(200).json({
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      phone: user.phone || "",
+      address: user.address || "",
+      role: user.role,
+    });
   } catch (err) {
     res.status(500).json({
       message: "Lỗi server khi lấy thông tin người dùng.",
       error: err.message,
     });
+  }
+});
+
+// POST /auth/login
+router.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res
+      .status(400)
+      .json({ message: "Vui lòng điền đầy đủ email và mật khẩu." });
+  }
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "Email không tồn tại." });
+    }
+
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
+      return res
+        .status(400)
+        .json({ message: "Email hoặc mật khẩu không đúng." });
+    }
+
+    const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET);
+
+    res.status(200).json({
+      message: "Đăng nhập thành công!",
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        phone: user.phone || "", // Thêm phone
+        address: user.address || "", // Thêm address
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "Lỗi server khi đăng nhập.", error: err.message });
   }
 });
 
@@ -191,12 +249,19 @@ router.put("/:id", verifyToken, async (req, res) => {
       return res.status(404).json({ message: "Người dùng không tìm thấy." });
     }
 
-    res
-      .status(200)
-      .json({ message: "Cập nhật người dùng thành công!", user: updatedUser });
+    res.status(200).json({
+      message: "Cập nhật người dùng thành công!",
+      user: {
+        id: updatedUser._id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        phone: updatedUser.phone || "", // Trả về phone, mặc định rỗng nếu không có
+        address: updatedUser.address || "", // Trả về address, mặc định rỗng nếu không có
+        role: updatedUser.role,
+      },
+    });
   } catch (err) {
     if (err.code === 11000) {
-      // Lỗi trùng lặp key (username/email)
       return res.status(409).json({
         message: "Tên người dùng hoặc email đã tồn tại.",
         error: err.message,
@@ -208,7 +273,6 @@ router.put("/:id", verifyToken, async (req, res) => {
     });
   }
 });
-
 // 6. Xóa người dùng (Chỉ Admin)
 router.delete("/:id", verifyToken, verifyAdmin, async (req, res) => {
   try {
@@ -223,5 +287,48 @@ router.delete("/:id", verifyToken, verifyAdmin, async (req, res) => {
       .json({ message: "Lỗi server khi xóa người dùng.", error: err.message });
   }
 });
+router.patch("/:id/role", verifyToken, verifyAdmin, async (req, res) => {
+  const { role } = req.body;
 
+  // Kiểm tra vai trò hợp lệ
+  if (!role || !["user", "admin"].includes(role)) {
+    return res.status(400).json({
+      message: "Vai trò không hợp lệ. Vai trò phải là 'user' hoặc 'admin'.",
+    });
+  }
+
+  // Ngăn admin tự thay đổi vai trò của chính mình
+  if (req.user.id === req.params.id) {
+    return res
+      .status(403)
+      .json({ message: "Không thể thay đổi vai trò của chính bạn." });
+  }
+
+  try {
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: { role } },
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "Người dùng không tìm thấy." });
+    }
+
+    res.status(200).json({
+      message: "Cập nhật vai trò thành công!",
+      user: {
+        id: updatedUser._id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        role: updatedUser.role,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: "Lỗi server khi cập nhật vai trò.",
+      error: err.message,
+    });
+  }
+});
 module.exports = router;

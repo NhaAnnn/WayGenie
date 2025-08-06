@@ -12,18 +12,20 @@ import {
   ScrollView,
   useWindowDimensions,
 } from "react-native";
-import { useAuth } from "../context/AuthContext";
 import { useNavigation } from "@react-navigation/native";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import axios from "axios";
+import { BACKEND_API_BASE_URL } from "../secrets";
+
+const AUTH_API_URL = `${BACKEND_API_BASE_URL}/auth`;
 
 export default function RegisterScreen() {
+  const [username, setUsername] = useState(""); // Đổi từ name thành username để khớp với backend
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [name, setName] = useState("");
-  const [localLoading, setLocalLoading] = useState(false); // Trạng thái tải cục bộ
-  const { register, error } = useAuth();
+  const [localLoading, setLocalLoading] = useState(false);
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
 
@@ -32,17 +34,20 @@ export default function RegisterScreen() {
   const isVerySmallScreen = width < 350;
 
   const handleRegister = async () => {
-    if (!name.trim()) {
+    // Kiểm tra username
+    if (!username.trim()) {
       if (Platform.OS === "web") {
-        toast.error("Vui lòng nhập họ và tên", {
+        toast.error("Vui lòng nhập tên người dùng", {
           position: "top-right",
           autoClose: 3000,
         });
       } else {
-        Alert.alert("Lỗi", "Vui lòng nhập họ và tên");
+        Alert.alert("Lỗi", "Vui lòng nhập tên người dùng");
       }
       return;
     }
+
+    // Kiểm tra định dạng email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       if (Platform.OS === "web") {
         toast.error("Email không hợp lệ", {
@@ -55,6 +60,7 @@ export default function RegisterScreen() {
       return;
     }
 
+    // Kiểm tra mật khẩu khớp
     if (password !== confirmPassword) {
       if (Platform.OS === "web") {
         toast.error("Mật khẩu không khớp", {
@@ -67,30 +73,60 @@ export default function RegisterScreen() {
       return;
     }
 
-    setLocalLoading(true);
-    const result = await register(name, email, password);
-    setLocalLoading(false);
+    // Kiểm tra độ dài mật khẩu
+    if (password.length < 6) {
+      if (Platform.OS === "web") {
+        toast.error("Mật khẩu phải có ít nhất 6 ký tự", {
+          position: "top-right",
+          autoClose: 3000,
+        });
+      } else {
+        Alert.alert("Lỗi", "Mật khẩu phải có ít nhất 6 ký tự");
+      }
+      return;
+    }
 
-    if (!result.success) {
+    setLocalLoading(true);
+    try {
+      const response = await axios.post(`${AUTH_API_URL}/register`, {
+        username,
+        email,
+        password,
+      });
+
+      setLocalLoading(false);
+
+      toast.success("Đăng ký thành công!", {
+        position: "top-right",
+        autoClose: 2000,
+        onClose: () => navigation.navigate("Login"), // Chuyển hướng sau khi thông báo đóng
+      });
+    } catch (err) {
+      setLocalLoading(false);
+      let errorMessage = "Lỗi không xác định";
+      if (err.response) {
+        switch (err.response.status) {
+          case 400:
+            errorMessage = "Vui lòng điền đầy đủ thông tin";
+            break;
+          case 409:
+            errorMessage = "Tên người dùng hoặc email đã tồn tại";
+            break;
+          case 500:
+            errorMessage = "Lỗi server, vui lòng thử lại sau";
+            break;
+          default:
+            errorMessage = err.response.data.message || "Lỗi không xác định";
+        }
+      }
       if (Platform.OS === "web") {
-        toast.error("Lỗi đăng ký: " + result.error, {
+        toast.error(`Lỗi đăng ký: ${errorMessage}`, {
           position: "top-right",
           autoClose: 3000,
         });
       } else {
-        Alert.alert("Lỗi", "Lỗi đăng ký: " + result.error);
+        Alert.alert("Lỗi", `Lỗi đăng ký: ${errorMessage}`);
       }
-      // Không điều hướng, giữ người dùng ở lại màn hình Register
-    } else {
-      if (Platform.OS === "web") {
-        toast.success("Đăng ký thành công!", {
-          position: "top-right",
-          autoClose: 3000,
-        });
-      } else {
-        Alert.alert("Thành công", "Đăng ký thành công!");
-      }
-      // Không điều hướng, để AppNavigator xử lý
     }
   };
 
@@ -122,7 +158,7 @@ export default function RegisterScreen() {
                 isVerySmallScreen && styles.labelVerySmall,
               ]}
             >
-              Họ và tên
+              Tên người dùng
             </Text>
             <TextInput
               style={[
@@ -130,10 +166,11 @@ export default function RegisterScreen() {
                 isSmallScreen && styles.inputSmall,
                 isVerySmallScreen && styles.inputVerySmall,
               ]}
-              placeholder="Nhập họ và tên"
+              placeholder="Nhập tên người dùng"
               placeholderTextColor="#999"
-              value={name}
-              onChangeText={setName}
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
             />
           </View>
 
@@ -272,7 +309,6 @@ export default function RegisterScreen() {
   );
 }
 
-// ... (styles giữ nguyên)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
