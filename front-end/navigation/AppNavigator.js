@@ -10,7 +10,7 @@ import LoginScreen from "../screens/LoginScreen";
 import HomeScreen from "../screens/user/HomeScreen";
 import CurrentStatusMapScreen from "../screens/user/CurrentStatusMapScreen";
 import SimulationMapScreen from "../screens/user/SimulationMapScreen";
-import RegisterScreen from "../screens/RegisterScreen.web";
+import RegisterScreen from "../screens/RegisterScreen";
 import AdminDashboardScreen from "../screens/admin/AdminDashboardScreen";
 import AdminFeaturesScreen from "../screens/admin/AdminFeaturesScreen";
 import UserManagementScreen from "../screens/admin/UserManagementScreen";
@@ -65,6 +65,9 @@ function AppStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MainTabs" component={AppTabs} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
+      <Stack.Screen name="ResetPassword" component={ResetPassword} />
       <Stack.Screen name="PersonalInfo" component={PersonalInfoScreen} />
     </Stack.Navigator>
   );
