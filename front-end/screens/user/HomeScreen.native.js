@@ -99,12 +99,7 @@ export default function HomeScreen() {
           {/* Card: Thông tin & Hỗ trợ */}
           <TouchableOpacity
             style={[styles.card, { width: isLargeScreen ? "48%" : "100%" }]}
-            onPress={() =>
-              Alert.alert(
-                "Thông tin & Hỗ trợ",
-                "Cung cấp thông tin tổng quan về ứng dụng, hướng dẫn sử dụng và cách liên hệ hỗ trợ."
-              )
-            }
+            onPress={() => navigateToScreen("Contact")}
           >
             <View style={styles.iconCircle}>
               <Ionicons

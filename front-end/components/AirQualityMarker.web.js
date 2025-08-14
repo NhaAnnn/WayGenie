@@ -17,7 +17,7 @@ const getAqiStatusAndColor = (aqi) => {
       color: "#ff8c00",
       textColor: "#ffffff",
     };
-  } else if (aqi >= 50) {
+  } else if (aqi > 50) {
     return { status: "moderate", color: "#ffff00", textColor: "#333333" };
   } else {
     return { status: "good", color: "#008000", textColor: "#ffffff" };

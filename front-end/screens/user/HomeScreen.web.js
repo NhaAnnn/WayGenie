@@ -17,10 +17,8 @@ import "react-toastify/dist/ReactToastify.css";
 
 const HomeScreen = () => {
   const [showDropdown, setShowDropdown] = useState(false);
-  const [hoveredItem, setHoveredItem] = useState(null);
-  const scrollViewRef = useRef(null);
   const navigation = useNavigation();
-  const { authToken, userRole, logout } = useAuth();
+  const { logout } = useAuth();
 
   const toggleDropdown = () => {
     setShowDropdown(!showDropdown);
@@ -30,28 +28,15 @@ const HomeScreen = () => {
     setShowDropdown(false);
   };
 
-  const handleHoverIn = (itemName) => {
-    setHoveredItem(itemName);
-  };
-
-  const handleHoverOut = () => {
-    setHoveredItem(null);
-  };
-
   const handleLogout = async () => {
-    console.log("Đăng xuất được nhấn");
     try {
       await logout();
       closeDropdown();
-      toast.success("Đăng xuất thành công!", {
-        position: "top-right",
-        autoClose: 2000,
-      });
+      toast.success("Đăng xuất thành công!", { autoClose: 2000 });
       navigation.navigate("Login");
     } catch (error) {
       console.error("Logout error:", error.message);
       toast.error("Không thể đăng xuất. Vui lòng thử lại.", {
-        position: "top-right",
         autoClose: 3000,
       });
     }
@@ -65,74 +50,22 @@ const HomeScreen = () => {
   return (
     <View style={styles.container}>
       <ScrollView
-        ref={scrollViewRef}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.navBar}>
-            <TouchableOpacity style={styles.navItem}>
+            <View style={styles.navItem}>
               <Image
                 source={require("../../assets/images/favicon.png")}
                 style={styles.navIcon}
               />
-              <Text style={styles.navTextICON}>TN-Map</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => navigation.navigate("Home")}
-              onMouseEnter={() => handleHoverIn("Trang chủ")}
-              onMouseLeave={handleHoverOut}
-            >
-              <Text
-                style={[
-                  styles.navText,
-                  hoveredItem === "Trang chủ" ? styles.hoveredNavText : null,
-                ]}
-              >
-                Trang chủ
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => navigation.navigate("CurrentStatusMap")}
-              onMouseEnter={() => handleHoverIn("Hiện trạng")}
-              onMouseLeave={handleHoverOut}
-            >
-              <Text
-                style={[
-                  styles.navText,
-                  hoveredItem === "Hiện trạng" ? styles.hoveredNavText : null,
-                ]}
-              >
-                Hiện trạng
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => navigation.navigate("SimulationMap")}
-              onMouseEnter={() => handleHoverIn("Mô phỏng")}
-              onMouseLeave={handleHoverOut}
-            >
-              <Text
-                style={[
-                  styles.navText,
-                  hoveredItem === "Mô phỏng" ? styles.hoveredNavText : null,
-                ]}
-              >
-                Mô phỏng
-              </Text>
-            </TouchableOpacity>
-
+              <Text style={styles.navTextICON}>WayGenie</Text>
+            </View>
             <View style={styles.profileContainer}>
               <TouchableOpacity
                 onPress={toggleDropdown}
-                onMouseEnter={() => handleHoverIn("Profile")}
-                onMouseLeave={handleHoverOut}
                 style={styles.avatarContainer}
               >
                 <Image
@@ -141,7 +74,6 @@ const HomeScreen = () => {
                 />
               </TouchableOpacity>
 
-              {/* Dropdown Menu - Sử dụng Modal để đảm bảo hiển thị trên các phần tử khác */}
               <Modal
                 visible={showDropdown}
                 transparent={true}
@@ -153,38 +85,16 @@ const HomeScreen = () => {
                     <TouchableOpacity
                       style={styles.dropdownItem}
                       onPress={handleProfileUpdate}
-                      onMouseEnter={() =>
-                        handleHoverIn("Cập nhật thông tin cá nhân")
-                      }
-                      onMouseLeave={handleHoverOut}
                     >
-                      <Text
-                        style={[
-                          styles.dropdownText,
-                          hoveredItem === "Cập nhật thông tin cá nhân"
-                            ? styles.hoveredDropdownText
-                            : null,
-                        ]}
-                      >
+                      <Text style={styles.dropdownText}>
                         Cập nhật trang cá nhân
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.dropdownItem}
                       onPress={handleLogout}
-                      onMouseEnter={() => handleHoverIn("Đăng xuất")}
-                      onMouseLeave={handleHoverOut}
                     >
-                      <Text
-                        style={[
-                          styles.dropdownText,
-                          hoveredItem === "Đăng xuất"
-                            ? styles.hoveredDropdownText
-                            : null,
-                        ]}
-                      >
-                        Đăng xuất
-                      </Text>
+                      <Text style={styles.dropdownText}>Đăng xuất</Text>
                     </TouchableOpacity>
                   </View>
                 </Pressable>
@@ -193,45 +103,51 @@ const HomeScreen = () => {
           </View>
         </View>
 
-        {/* Phần còn lại của code giữ nguyên */}
-        {/* Main Content - Split 50/50 */}
+        {/* Main Content */}
         <View style={styles.mainContent}>
-          {/* Left Content (50%) */}
-          <View style={styles.leftContent}>
-            <View style={styles.labSection}>
-              <Text style={styles.labTitle}>Cæsmos</Text>
-              <Text style={styles.labSubtitle}>RESEARCH LABORATORY</Text>
-            </View>
+          {/* Welcome and Description */}
+          <View style={styles.welcomeSection}>
+            <Text style={styles.welcomeTitle}>Chào mừng đến với WayGenie</Text>
+            <Text style={styles.welcomeSubtitle}>
+              Khám phá và mô phỏng hiện trạng môi trường của Hà Nội.
+            </Text>
+          </View>
 
-            <View style={styles.universitySection}>
-              <View style={styles.logoContainer}>
-                <Image
-                  source={require("../../assets/images/favicon.png")}
-                  style={styles.centerLogo}
-                  resizeMode="contain"
-                />
-              </View>
-              <Text style={styles.universitySubtitle}>CENTER FOR</Text>
-              <Text style={styles.universitySubtitle}>
-                ENVIRONMENTAL INTELLIGENCE
+          {/* Navigation Cards */}
+          <View style={styles.cardContainer}>
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => navigation.navigate("CurrentStatusMap")}
+            >
+              <FontAwesome name="map" size={40} color="#4A90E2" />
+              <Text style={styles.cardTitle}>Hiện trạng</Text>
+              <Text style={styles.cardDescription}>
+                Xem bản đồ hiện trạng môi trường.
               </Text>
-            </View>
-          </View>
+            </TouchableOpacity>
 
-          {/* Right Content (50%) with left-aligned map */}
-          <View style={styles.rightContent}>
-            <Image
-              source={require("../../assets/images/map.jpg")}
-              style={styles.mapImage}
-              resizeMode="contain"
-            />
-          </View>
-        </View>
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => navigation.navigate("SimulationMap")}
+            >
+              <FontAwesome name="line-chart" size={40} color="#4A90E2" />
+              <Text style={styles.cardTitle}>Mô phỏng</Text>
+              <Text style={styles.cardDescription}>
+                Mô phỏng các kịch bản môi trường.
+              </Text>
+            </TouchableOpacity>
 
-        {/* Greeting Section */}
-        <View style={styles.greetingSection}>
-          <Text style={styles.greeting}>Xin chào!</Text>
-          <Text style={styles.question}>Bạn muốn đi đến đâu?</Text>
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => navigation.navigate("Contact")}
+            >
+              <FontAwesome name="info-circle" size={40} color="#4A90E2" />
+              <Text style={styles.cardTitle}>Liên hệ hỗ trợ</Text>
+              <Text style={styles.cardDescription}>
+                Tìm hiểu về dự án và nhóm nghiên cứu.
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Footer */}
@@ -240,19 +156,12 @@ const HomeScreen = () => {
           <View style={styles.socialIcons}>
             {["facebook", "twitter", "github", "google", "instagram"].map(
               (icon) => (
-                <TouchableOpacity
-                  key={icon}
-                  style={styles.iconButton}
-                  onMouseEnter={() => handleHoverIn(icon)}
-                  onMouseLeave={handleHoverOut}
-                >
+                <TouchableOpacity key={icon} style={styles.iconButton}>
                   <FontAwesome
                     name={icon}
                     size={24}
                     color={
-                      hoveredItem === icon
-                        ? "#ffffff"
-                        : icon === "facebook"
+                      icon === "facebook"
                         ? "#3b5998"
                         : icon === "twitter"
                         ? "#1da1f2"
@@ -268,7 +177,7 @@ const HomeScreen = () => {
             )}
           </View>
           <Text style={styles.copyright}>
-            © {new Date().getFullYear()} TN-Map. All rights reserved.
+            © {new Date().getFullYear()} WayGenie. All rights reserved.
           </Text>
         </View>
       </ScrollView>
@@ -290,48 +199,44 @@ const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#F5F7FA", // Light background
   },
   scrollContent: {
     flexGrow: 1,
   },
   header: {
-    backgroundColor: "#3cb371",
-    paddingTop: 20,
-    paddingBottom: 10,
-    zIndex: 100, // Đảm bảo header hiển thị trên các phần tử khác
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   navBar: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: 20,
   },
   navItem: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 5,
-    paddingHorizontal: 10,
   },
   navIcon: {
-    width: 22,
-    height: 22,
+    width: 25,
+    height: 25,
+    marginRight: 10,
   },
   navTextICON: {
-    color: "white",
-    fontSize: 22,
+    color: "#4A90E2",
+    fontSize: 24,
     fontWeight: "bold",
-  },
-  navText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  hoveredNavText: {
-    borderBottomWidth: 2,
-    borderBottomColor: "white",
   },
   profileContainer: {
     position: "relative",
-    zIndex: 101, // Cao hơn header
   },
   avatarContainer: {
     padding: 5,
@@ -341,122 +246,100 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     borderWidth: 2,
-    borderColor: "white",
+    borderColor: "#4A90E2",
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.2)",
-    justifyContent: "flex-start",
-    alignItems: "flex-end",
-    paddingTop: 70,
-    paddingRight: 20,
   },
   dropdown: {
+    position: "absolute",
+    right: 20,
+    top: 60,
     backgroundColor: "white",
-    borderRadius: 5,
+    borderRadius: 8,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
     elevation: 5,
     minWidth: 200,
+    paddingVertical: 5,
   },
   dropdownItem: {
-    paddingVertical: 15,
+    paddingVertical: 12,
     paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
   },
   dropdownText: {
-    color: "#333",
-    fontSize: 14,
-  },
-  hoveredDropdownText: {
-    color: "#3cb371",
-    fontWeight: "bold",
+    color: "#555",
+    fontSize: 16,
   },
   mainContent: {
-    flexDirection: "row",
-    width: "100%",
-    paddingHorizontal: 20,
-    marginBottom: 30,
-  },
-  leftContent: {
-    flex: 1,
-    paddingRight: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingTop: 40,
-  },
-  rightContent: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "flex-start",
-    paddingTop: 40,
-    paddingLeft: 20,
-  },
-  mapImage: {
-    width: "100%",
-    height: 300,
-    maxWidth: 500,
-  },
-  labSection: {
-    marginBottom: 30,
+    padding: 40,
     alignItems: "center",
   },
-  labTitle: {
+  welcomeSection: {
+    marginBottom: 50,
+    alignItems: "center",
+  },
+  welcomeTitle: {
     fontSize: 32,
     fontWeight: "bold",
     color: "#333",
-    fontStyle: "italic",
-    marginBottom: 5,
-  },
-  labSubtitle: {
-    fontSize: 16,
-    color: "#666",
-    letterSpacing: 1,
-  },
-  universitySection: {
-    marginBottom: 10,
-    alignItems: "center",
-  },
-  centerLogo: {
-    width: 220,
-    height: 60,
     marginBottom: 10,
   },
-  universitySubtitle: {
+  welcomeSubtitle: {
     fontSize: 18,
-    color: "#333",
-    textAlign: "left",
+    color: "#666",
+    textAlign: "center",
+    maxWidth: 600,
   },
-  greetingSection: {
-    marginBottom: 40,
+  cardContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: 20,
+  },
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 30,
     alignItems: "center",
-    clear: "both",
+    width: 250,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    transitionDuration: "0.3s",
   },
-  greeting: {
-    fontSize: 24,
+  cardTitle: {
+    fontSize: 20,
     fontWeight: "bold",
-    marginBottom: 10,
+    marginTop: 15,
+    marginBottom: 5,
     color: "#333",
   },
-  question: {
-    fontSize: 18,
-    color: "#666",
+  cardDescription: {
+    fontSize: 14,
+    color: "#777",
+    textAlign: "center",
   },
   footer: {
-    backgroundColor: "#eeeeee",
+    backgroundColor: "#EFEFEF",
     paddingVertical: 25,
     alignItems: "center",
+    marginTop: "auto",
     borderTopWidth: 1,
-    borderTopColor: "#e9ecef",
-    marginTop: 20,
-    width: "100%",
+    borderTopColor: "#E0E0E0",
   },
   footerText: {
     fontSize: 16,
     fontWeight: "bold",
     marginBottom: 15,
-    color: "#333",
+    color: "#555",
   },
   socialIcons: {
     flexDirection: "row",
@@ -466,12 +349,10 @@ const styles = StyleSheet.create({
   iconButton: {
     marginHorizontal: 10,
     padding: 8,
-    borderRadius: 20,
-    backgroundColor: "transparent",
   },
   copyright: {
     fontSize: 12,
-    color: "#6c757d",
+    color: "#888",
   },
 });
 

@@ -13,7 +13,7 @@ router.use(verifyToken);
  */
 
 // POST /simulate/aqis
-// Mô phỏng chất lượng không khí tại một điểm cụ thể với bán kính ảnh hưởng và các chỉ số ô nhiễm chi tiết
+
 router.post("/aqis", async (req, res) => {
   const userId = req.user.id;
 
@@ -35,15 +35,10 @@ router.post("/aqis", async (req, res) => {
   if (
     lon === undefined ||
     lat === undefined ||
-    pm25 === undefined || // PM2.5 vẫn là bắt buộc
+    pm25 === undefined ||
     radiusKm === undefined ||
     !simulationName ||
-    aqi === undefined || // Thêm AQI vào kiểm tra bắt buộc
-    pm10 === undefined || // Thêm PM10 vào kiểm tra bắt buộc
-    co === undefined || // Thêm CO vào kiểm tra bắt buộc
-    no2 === undefined || // Thêm NO2 vào kiểm tra bắt buộc
-    so2 === undefined || // Thêm SO2 vào kiểm tra bắt buộc
-    o3 === undefined // Thêm O3 vào kiểm tra bắt buộc
+    aqi === undefined
   ) {
     return res.status(400).json({
       success: false,
@@ -56,10 +51,6 @@ router.post("/aqis", async (req, res) => {
         "simulationName",
         "aqi",
         "pm10",
-        "co",
-        "no2",
-        "so2",
-        "o3",
       ],
     });
   }
@@ -82,16 +73,12 @@ router.post("/aqis", async (req, res) => {
     isNaN(parsedPm25) ||
     isNaN(parsedRadiusKm) ||
     isNaN(parsedAqi) ||
-    isNaN(parsedPm10) ||
-    isNaN(parsedCo) ||
-    isNaN(parsedNo2) ||
-    isNaN(parsedSo2) ||
-    isNaN(parsedO3)
+    isNaN(parsedPm10)
   ) {
     return res.status(400).json({
       success: false,
       error:
-        "Tất cả các giá trị (Kinh độ, Vĩ độ, PM2.5, Bán kínhKm, AQI, PM10, CO, NO2, SO2, O3) phải là các số hợp lệ.",
+        "Tất cả các giá trị (Kinh độ, Vĩ độ, PM2.5, Bán kínhKm, AQI, PM10) phải là các số hợp lệ.",
     });
   }
 
@@ -99,16 +86,12 @@ router.post("/aqis", async (req, res) => {
     parsedPm25 < 0 ||
     parsedRadiusKm <= 0 ||
     parsedAqi < 0 ||
-    parsedPm10 < 0 ||
-    parsedCo < 0 ||
-    parsedNo2 < 0 ||
-    parsedSo2 < 0 ||
-    parsedO3 < 0
+    parsedPm10 < 0
   ) {
     return res.status(400).json({
       success: false,
       error:
-        "Các giá trị PM2.5, AQI, PM10, CO, NO2, SO2, O3 không thể âm. Bán kínhKm phải là số dương.",
+        "Các giá trị PM2.5, AQI, PM10 không thể âm. Bán kínhKm phải là số dương.",
     });
   }
 
@@ -327,12 +310,13 @@ router.put("/:id", async (req, res) => {
     // Validate simulation_data based on type
     let validatedData;
     if (simulation_type === "aqi") {
-      const { lon, lat, pm25, radiusKm } = simulation_data;
-      if (!lon || !lat || !pm25 || !radiusKm) {
+      const { lon, lat, aqi, pm25, pm10, co, no2, so2, o3, radiusKm } =
+        simulation_data;
+      if (!lon || !lat || !pm25 || !radiusKm || !aqi) {
         return res.status(400).json({
           success: false,
           error:
-            "Missing required fields for AQI simulation: lon, lat, pm25, radiusKm.",
+            "Missing required fields for AQI simulation: lon, lat, aqi, pm25, pm10, co, no2, so2, o3, radiusKm.",
         });
       }
       if (
@@ -343,19 +327,27 @@ router.put("/:id", async (req, res) => {
       ) {
         return res.status(400).json({
           success: false,
-          error: "lon, lat, pm25, and radiusKm must be valid numbers.",
+          error:
+            "lon, lat, pm25, pm10, co, no2, so2, o3, and radiusKm must be valid numbers.",
         });
       }
       if (parseFloat(radiusKm) <= 0 || parseFloat(pm25) < 0) {
         return res.status(400).json({
           success: false,
-          error: "radiusKm must be positive, and pm25 cannot be negative.",
+          error:
+            "radiusKm must be positive, and pm25, pm10, co, no2, so2, o3 cannot be negative.",
         });
       }
       validatedData = {
+        aqi: parseFloat(aqi),
         lon: parseFloat(lon),
         lat: parseFloat(lat),
         pm25: parseFloat(pm25),
+        pm10: parseFloat(pm10),
+        co: parseFloat(co),
+        no2: parseFloat(no2),
+        so2: parseFloat(so2),
+        o3: parseFloat(o3),
         radiusKm: parseFloat(radiusKm),
       };
     } else if (simulation_type === "traffic") {

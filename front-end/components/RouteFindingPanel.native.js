@@ -89,6 +89,17 @@ const RouteFindingPanel = ({
   const debouncedStartText = useDebounce(start, 300);
   const debouncedEndText = useDebounce(end, 300);
 
+  // Filter transport modes based on selected criterion
+  const filteredTransportModes = useMemo(() => {
+    if (["least_pollution", "emission"].includes(selectedRoutingCriterionId)) {
+      return transportModes.filter(
+        (item) =>
+          item.mapboxProfile !== "walking" && item.mapboxProfile !== "cycling"
+      );
+    }
+    return transportModes;
+  }, [selectedRoutingCriterionId]);
+
   useEffect(() => {
     if (activeInput === "start") {
       handleAutocomplete(debouncedStartText, "start");
@@ -100,6 +111,13 @@ const RouteFindingPanel = ({
       handleAutocomplete(debouncedEndText, "end");
     }
   }, [debouncedEndText, activeInput]);
+
+  // Set default mode to "driving" when "healthiest" criterion is selected
+  useEffect(() => {
+    if (selectedRoutingCriterionId === "healthiest") {
+      setMode("driving");
+    }
+  }, [selectedRoutingCriterionId]);
 
   const fetchRoute = useCallback(async () => {
     if (!startCoords || !endCoords) {
@@ -211,18 +229,15 @@ const RouteFindingPanel = ({
             ?.name || "Tuyến đường",
       });
 
-      // CRITICAL FIX: Transform availableRoutes into the correct GeoJSON FeatureCollection format
-      // before passing it to onRouteSelected.
       const geoJSONRoutesForMap = availableRoutes.map((r) => {
         if (selectedRoutingCriterionId === "healthiest") {
-          // For 'healthiest' routes, 'r' (from availableRoutes) has a 'segments' array
           return {
             type: "FeatureCollection",
             features: r.segments.map((segment, index) => ({
               type: "Feature",
               geometry: segment.geometry,
               properties: {
-                routeId: r.id, // Use the route's ID
+                routeId: r.id,
                 segmentId: `${r.id}_${index}`,
                 recommendedMode: segment.recommendedMode,
                 length: segment.LENGTH,
@@ -233,27 +248,24 @@ const RouteFindingPanel = ({
             })),
           };
         } else {
-          // For other criteria, 'r' (from availableRoutes) has a 'segmentFeatures' array
           return {
             type: "FeatureCollection",
             features: r.segmentFeatures.map((feature) => ({
               ...feature,
               properties: {
                 ...feature.properties,
-                routeId: r.id, // Ensure routeId is consistently set
+                routeId: r.id,
               },
             })),
           };
         }
       });
 
-      // Log the data being passed to onRouteSelected to confirm its structure
       console.log(
         "Passing to onRouteSelected from selectRoute:",
         JSON.stringify(geoJSONRoutesForMap, null, 2)
       );
 
-      // Pass the correctly formatted GeoJSON data
       onRouteSelected(startCoords, endCoords, geoJSONRoutesForMap, route.id);
     },
     [
@@ -343,9 +355,9 @@ const RouteFindingPanel = ({
     }
   };
 
-  const currentModeLabel = transportModes.find(
-    (item) => item.mapboxProfile === mode
-  )?.label;
+  const currentModeLabel =
+    filteredTransportModes.find((item) => item.mapboxProfile === mode)?.label ||
+    "Xe hơi";
   const currentCriterionName = routingCriteria.find(
     (criterion) => criterion.id === selectedRoutingCriterionId
   )?.name;
@@ -438,19 +450,6 @@ const RouteFindingPanel = ({
                   Keyboard.dismiss();
                   setSuggestions([]);
                   setActiveInput(null);
-                  setIsModePanelVisible(true);
-                }}
-              >
-                <Text style={styles.actionButtonText}>
-                  Chế độ: {currentModeLabel}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setSuggestions([]);
-                  setActiveInput(null);
                   setIsCriteriaPanelVisible(true);
                 }}
               >
@@ -459,6 +458,21 @@ const RouteFindingPanel = ({
                 </Text>
                 <Ionicons name="options" size={18} color="#1976d2" />
               </TouchableOpacity>
+              {selectedRoutingCriterionId !== "healthiest" && (
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setSuggestions([]);
+                    setActiveInput(null);
+                    setIsModePanelVisible(true);
+                  }}
+                >
+                  <Text style={styles.actionButtonText}>
+                    Chế độ: {currentModeLabel}
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() => {
@@ -498,11 +512,11 @@ const RouteFindingPanel = ({
                         </Text>
                         <Text>{`)`}</Text>
                         {selectedRoutingCriterionId === "healthiest" && (
-                          <Text
-                            style={styles.routeDetailHighlight}
-                          >{`Phương tiện: ${route.properties.recommendedModes.join(
-                            ", "
-                          )}`}</Text>
+                          <Text style={styles.routeDetailHighlight}>
+                            {`Phương tiện: ${route.properties.recommendedModes.join(
+                              ", "
+                            )}`}
+                          </Text>
                         )}
                       </Text>
                       <Text style={styles.routeScoreText}>
@@ -579,7 +593,7 @@ const RouteFindingPanel = ({
                 </TouchableOpacity>
               </View>
               <ScrollView style={styles.panelScrollView}>
-                {transportModes.map((item) => (
+                {filteredTransportModes.map((item) => (
                   <TouchableOpacity
                     key={item.key}
                     style={styles.panelItem}
@@ -661,6 +675,7 @@ const styles = StyleSheet.create({
     top: Platform.OS === "android" ? 30 : 30,
     left: 10,
     right: 10,
+    width: SCREEN_WIDTH * 0.95,
     backgroundColor: "#fff",
     borderRadius: 15,
     padding: 15,
@@ -739,52 +754,6 @@ const styles = StyleSheet.create({
     color: "#1976d2",
     marginRight: 5,
     fontWeight: "600",
-  },
-  maxRoutesContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#e0f2f7",
-    paddingVertical: 5,
-    paddingHorizontal: 15,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: "#a7d9ee",
-    marginBottom: 5,
-  },
-  maxRoutesLabel: {
-    fontSize: 12,
-    color: "#1976d2",
-    fontWeight: "600",
-    marginRight: 5,
-  },
-  maxRoutesInput: {
-    width: 40,
-    height: 24,
-    borderColor: "#ddd",
-    borderWidth: 1,
-    borderRadius: 5,
-    textAlign: "center",
-    fontSize: 12,
-    color: "#333",
-    backgroundColor: "#fff",
-  },
-  findButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#1976d2",
-    paddingVertical: 10,
-    borderRadius: 10,
-    height: 40,
-  },
-  findButtonDisabled: {
-    backgroundColor: "#cccccc",
-  },
-  findButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-    marginLeft: 10,
   },
   errorText: { color: "red", marginTop: 10, textAlign: "center" },
   suggestedRoutesContainer: {

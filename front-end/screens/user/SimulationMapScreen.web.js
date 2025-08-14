@@ -28,6 +28,7 @@ import {
 } from "../../secrets.js";
 import { useAuth } from "../../context/AuthContext";
 import axios from "axios";
+import { ToastContainer, toast } from "react-toastify";
 
 const COORDINATES_API_URL = `${BACKEND_API_BASE_URL}/coordinates`;
 const ROUTES_API_URL = `${BACKEND_API_BASE_URL}/routes`;
@@ -849,7 +850,13 @@ const SimulationMapScreen = () => {
         setSelectedAqiData(null);
         setSelectedRouteData(null);
         setSelectedTrafficData(null);
-        console.log("Clicked on map background, closing panels.");
+        toast.warn(
+          "Vui lòng chọn một tuyến đường hoặc trạm chất lượng không khí để xem thông tin chi tiết.",
+          {
+            position: "top-right",
+            autoClose: 3000,
+          }
+        );
       }
     },
     [interactiveLayerIds, layersVisibility, routeFeatures]
@@ -912,6 +919,7 @@ const SimulationMapScreen = () => {
         );
       }
       setAqiPanelVisible(false);
+      handleCloseAqiPanel();
     },
     [fetchGraphData, getAuthHeaders]
   );
@@ -945,6 +953,7 @@ const SimulationMapScreen = () => {
         );
       }
       setTrafficPanelVisible(false);
+      handleCloseTrafficCallout();
     },
     [fetchGraphData, getAuthHeaders]
   );
@@ -952,6 +961,9 @@ const SimulationMapScreen = () => {
   const handleSimulationApplied = useCallback(() => {
     console.log("Simulation applied, refreshing map data...");
     fetchGraphData();
+    handleCloseAqiPanel();
+    handleCloseRouteCallout();
+    handleCloseTrafficCallout();
   }, [fetchGraphData]);
 
   const toggleLayer = useCallback(
@@ -1006,6 +1018,7 @@ const SimulationMapScreen = () => {
 
   return (
     <View style={styles.container}>
+      <ToastContainer />
       <View style={styles.mapContainer}>
         <MapWrapper
           ref={mapRef}

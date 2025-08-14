@@ -198,7 +198,7 @@ mongoose
 
     // 3. Lên lịch chạy hàng ngày
     // Biểu thức cron: "0 2 * * *" nghĩa là chạy vào phút 0, giờ 2 (2 giờ sáng) mỗi ngày
-    cron.schedule("0 2 * * *", () => {
+    cron.schedule("*/5 * * * *", () => {
       console.log(
         "Đang chạy tác vụ lấy dữ liệu AQI theo lịch trình hàng ngày..."
       );

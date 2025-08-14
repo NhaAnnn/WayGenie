@@ -10,11 +10,10 @@ import LoginScreen from "../screens/LoginScreen";
 import HomeScreen from "../screens/user/HomeScreen";
 import CurrentStatusMapScreen from "../screens/user/CurrentStatusMapScreen";
 import SimulationMapScreen from "../screens/user/SimulationMapScreen";
-import RegisterScreen from "../screens/RegisterScreen";
+import RegisterScreen from "../screens/RegisterScreen.web";
 import AdminDashboardScreen from "../screens/admin/AdminDashboardScreen";
 import AdminFeaturesScreen from "../screens/admin/AdminFeaturesScreen";
 import UserManagementScreen from "../screens/admin/UserManagementScreen";
-import AnnouncementsScreen from "../screens/admin/AnnouncementsScreen";
 import SimulatedTrafficScreen from "../screens/admin/SimulatedTrafficScreen";
 import ConfigureRouteScreen from "../screens/admin/ConfigureRouteScreen";
 import PersonalInfoScreen from "../screens/user/PersonalInfoScreen";
@@ -24,6 +23,7 @@ import RouteManagement from "../screens/admin/RouteManagement.web";
 import UploadManagement from "../screens/admin/UploadManagement";
 import ForgotPassword from "../screens/ForgotPassword";
 import ResetPassword from "../screens/ResetPassword";
+import ContactScreen from "../screens/user/ContactScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -69,6 +69,7 @@ function AppStack() {
       <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
       <Stack.Screen name="ResetPassword" component={ResetPassword} />
       <Stack.Screen name="PersonalInfo" component={PersonalInfoScreen} />
+      <Stack.Screen name="Contact" component={ContactScreen} />
     </Stack.Navigator>
   );
 }
@@ -84,8 +85,7 @@ function WebStack() {
         component={CurrentStatusMapScreen}
       />
       <Stack.Screen name="SimulationMap" component={SimulationMapScreen} />
-
-      {/* Thêm các màn hình khác nếu cần */}
+      <Stack.Screen name="Contact" component={ContactScreen} />
     </Stack.Navigator>
   );
 }
