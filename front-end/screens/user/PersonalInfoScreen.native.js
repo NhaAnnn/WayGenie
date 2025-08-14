@@ -9,42 +9,80 @@ import {
   ScrollView,
   Alert,
 } from "react-native";
+import { useAuth } from "../../context/AuthContext"; // Import AuthContext
 import { BACKEND_API_BASE_URL } from "../../secrets.js";
 
 const PersonalInfoScreen = ({ navigation }) => {
+  const { user, authToken, updateUser } = useAuth(); // Lấy user, authToken, và updateUser từ AuthContext
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const USER_API_URL = `${BACKEND_API_BASE_URL}/auth`;
+  const USER_API_URL = `${BACKEND_API_BASE_URL}/auth/${user?.id}`; // Sử dụng /auth/:id để lấy thông tin người dùng cụ thể
 
-  // Gọi API để lấy dữ liệu khi component mount
+  // Load dữ liệu từ user trong AuthContext khi component mount
   useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        const response = await fetch(USER_API_URL); // Thay bằng URL API thực tế
-        const data = await response.json();
-        setName(data.name);
-        setEmail(data.email);
-        setPhone(data.phone);
-        setAddress(data.address);
-      } catch (error) {
-        Alert.alert("Lỗi", "Không thể tải thông tin cá nhân.");
-      } finally {
-        setLoading(false);
+    if (user) {
+      setName(user.username || "");
+      setEmail(user.email || "");
+      setPhone(user.phone || "");
+      setAddress(user.address || "");
+      setLoading(false);
+    } else {
+      Alert.alert(
+        "Lỗi",
+        "Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại."
+      );
+      navigation.navigate("Login");
+    }
+  }, [user, navigation]);
+
+  // Handle saving changes: Gọi API PUT để cập nhật
+  const handleSaveChanges = async () => {
+    if (!authToken) {
+      Alert.alert("Lỗi", "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.");
+      return;
+    }
+
+    try {
+      const response = await fetch(USER_API_URL, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          username: name,
+          email: email,
+          phone: phone,
+          address: address,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Lỗi khi cập nhật thông tin.");
       }
-    };
 
-    fetchUserData();
-  }, []);
+      // Cập nhật state user trong AuthContext
+      if (updateUser) {
+        updateUser({
+          ...user,
+          username: data.user.username,
+          email: data.user.email,
+          phone: data.user.phone,
+          address: data.user.address,
+        });
+      }
 
-  // Handle saving changes
-  const handleSaveChanges = () => {
-    console.log("Saving changes:", { name, email, phone, address });
-    Alert.alert("Thành công", "Thông tin cá nhân đã được lưu.");
-    setIsEditing(false);
+      Alert.alert("Thành công", "Thông tin cá nhân đã được lưu.");
+      setIsEditing(false);
+    } catch (error) {
+      Alert.alert("Lỗi", error.message || "Không thể cập nhật thông tin.");
+    }
   };
 
   if (loading) {

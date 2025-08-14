@@ -1,274 +1,198 @@
-import React, {
-  forwardRef,
-  useRef,
-  useEffect,
-  useImperativeHandle,
-  useState,
-  useCallback,
-} from "react";
+import React, { useRef, useEffect, useMemo } from "react";
+import { StyleSheet, View, Text } from "react-native";
 import MapboxGL from "@rnmapbox/maps";
-import { View, StyleSheet, Text } from "react-native";
 
-/**
- * Calculates the bounding box for an array of GeoJSON Features.
- * It iterates through all coordinates within Point and LineString geometries
- * to find the min/max longitude and latitude.
- *
- * @param {Array<Object>} features An array of GeoJSON Feature objects.
- * @returns {Array<Array<number>>|null} A bounding box as [[minLon, minLat], [maxLon, maxLat]] or null if no valid coordinates found.
- */
+const routeColors = ["#007AFF", "#0e401bff", "#AF52DE", "#FF9500", "#FF2D55"];
 
-const calculateBoundingBox = (features) => {
-  let minLon = Infinity;
-  let minLat = Infinity;
-  let maxLon = -Infinity;
-  let maxLat = -Infinity;
+const MapWrapper = ({
+  initialCenter,
+  initialZoom,
+  styleURL,
+  onMapLoaded,
+  startCoords,
+  endCoords,
+  routeGeoJSONs,
+  selectedRouteId,
+  children,
+}) => {
+  const cameraRef = useRef(null);
+  const mapRef = useRef(null);
 
-  if (!Array.isArray(features) || features.length === 0) {
-    console.warn(
-      "calculateBoundingBox: No GeoJSON features provided. Returning null."
-    );
-    return null;
-  }
+  const debounce = (func, delay) => {
+    let timer;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => func(...args), delay);
+    };
+  };
 
-  features.forEach((feature) => {
-    // Skip if feature or its geometry/coordinates are invalid
-    if (!feature || !feature.geometry || !feature.geometry.coordinates) {
-      console.warn(
-        "calculateBoundingBox: Skipping invalid feature or geometry:",
-        feature
-      );
-      return;
+  const fitCameraToRoute = debounce(async () => {
+    if (!cameraRef.current || !mapRef.current) return;
+
+    let allCoords = [];
+    if (startCoords) allCoords.push(startCoords);
+    if (endCoords) allCoords.push(endCoords);
+
+    if (routeGeoJSONs) {
+      const features =
+        routeGeoJSONs.type === "FeatureCollection"
+          ? routeGeoJSONs.features
+          : Array.isArray(routeGeoJSONs)
+          ? routeGeoJSONs.flatMap((g) => g.features || [])
+          : [];
+      features.forEach((feature) => {
+        if (
+          feature.geometry?.type === "LineString" &&
+          feature.geometry.coordinates
+        ) {
+          allCoords = allCoords.concat(feature.geometry.coordinates);
+        }
+      });
     }
 
-    const coords = feature.geometry.coordinates;
-    const type = feature.geometry.type;
+    if (allCoords.length > 0) {
+      const lons = allCoords.map((c) => c[0]).filter((n) => !isNaN(n));
+      const lats = allCoords.map((c) => c[1]).filter((n) => !isNaN(n));
+      if (lons.length > 0 && lats.length > 0) {
+        const ne = [Math.max(...lons), Math.max(...lats)];
+        const sw = [Math.min(...lons), Math.min(...lats)];
+        try {
+          await cameraRef.current.fitBounds(ne, sw, [50, 50, 50, 50], 1000);
+        } catch (error) {
+          console.error("Camera fitBounds error:", error);
+        }
+      }
+    } else if (initialCenter) {
+      cameraRef.current.setCamera({
+        centerCoordinate: initialCenter,
+        zoomLevel: initialZoom,
+        animationDuration: 0,
+      });
+    }
+  }, 500);
 
-    if (type === "Point") {
-      // For Point, coords is [lon, lat]
+  useEffect(() => {
+    if (mapRef.current && (startCoords || endCoords || routeGeoJSONs)) {
+      fitCameraToRoute();
+    }
+  }, [startCoords, endCoords, routeGeoJSONs]);
+
+  const onMapReady = () => {
+    if (onMapLoaded) onMapLoaded();
+    if (cameraRef.current && initialCenter) {
+      cameraRef.current.setCamera({
+        centerCoordinate: initialCenter,
+        zoomLevel: initialZoom,
+        animationDuration: 0,
+      });
+    }
+  };
+
+  const renderRoutes = useMemo(() => {
+    const features =
+      routeGeoJSONs?.type === "FeatureCollection"
+        ? routeGeoJSONs.features
+        : Array.isArray(routeGeoJSONs)
+        ? routeGeoJSONs.flatMap((g) => g.features || [])
+        : [];
+
+    return features.map((feature, index) => {
       if (
-        Array.isArray(coords) &&
-        coords.length === 2 &&
-        typeof coords[0] === "number" &&
-        typeof coords[1] === "number" &&
-        !isNaN(coords[0]) &&
-        !isNaN(coords[1])
+        !feature ||
+        !feature.geometry ||
+        feature.geometry.type !== "LineString" ||
+        !feature.geometry.coordinates ||
+        feature.geometry.coordinates.length < 2
       ) {
-        minLon = Math.min(minLon, coords[0]);
-        minLat = Math.min(minLat, coords[1]);
-        maxLon = Math.max(maxLon, coords[0]);
-        maxLat = Math.max(maxLat, coords[1]);
-      } else {
-        console.warn(
-          "calculateBoundingBox: Invalid Point coordinates found:",
-          coords
-        );
+        console.warn("Invalid route feature skipped:", feature);
+        return null;
       }
-    } else if (type === "LineString") {
-      // For LineString, coords is an array of [lon, lat] arrays
-      if (Array.isArray(coords)) {
-        coords.forEach((coord) => {
-          if (
-            Array.isArray(coord) &&
-            coord.length === 2 &&
-            typeof coord[0] === "number" &&
-            typeof coord[1] === "number" &&
-            !isNaN(coord[0]) &&
-            !isNaN(coord[1])
-          ) {
-            minLon = Math.min(minLon, coord[0]);
-            minLat = Math.min(minLat, coord[1]);
-            maxLon = Math.max(maxLon, coord[0]);
-            maxLat = Math.max(maxLat, coord[1]);
-          } else {
-            console.warn(
-              "calculateBoundingBox: Invalid LineString segment coordinate found:",
-              coord
-            );
-          }
-        });
-      } else {
-        console.warn(
-          "calculateBoundingBox: LineString coordinates are not an array:",
-          coords
-        );
-      }
-    }
-    // Add logic for other geometry types (e.g., Polygon, MultiPoint, etc.) if needed
-  });
+      const lineColor = routeColors[index % routeColors.length];
+      const isSelected = feature.properties?.routeId === selectedRouteId;
+      const lineWidth = isSelected ? 6 : 3;
+      const lineOpacity = isSelected ? 0.8 : 0.5;
 
-  if (minLon === Infinity) {
-    console.warn(
-      "calculateBoundingBox: No valid numeric coordinates found in any feature. Returning null."
-    );
-    return null; // No valid coordinates were processed
-  }
+      return (
+        <MapboxGL.ShapeSource
+          key={`route-${feature.properties?.routeId || index}`}
+          id={`routeSource-${feature.properties?.routeId || index}`}
+          shape={feature}
+        >
+          <MapboxGL.LineLayer
+            id={`routeLine-${feature.properties?.routeId || index}`}
+            style={{
+              lineColor,
+              lineWidth,
+              lineOpacity,
+              lineJoin: "round",
+              lineCap: "round",
+            }}
+          />
+        </MapboxGL.ShapeSource>
+      );
+    });
+  }, [routeGeoJSONs, selectedRouteId]);
 
-  return [
-    [minLon, minLat], // SW corner [lon, lat]
-    [maxLon, maxLat], // NE corner [lon, lat]
-  ];
+  return (
+    <View style={styles.mapContainer}>
+      <MapboxGL.MapView
+        ref={mapRef}
+        style={styles.map}
+        styleURL={styleURL}
+        onDidFinishLoadingMap={onMapReady}
+      >
+        <MapboxGL.Camera
+          ref={cameraRef}
+          zoomLevel={initialZoom}
+          centerCoordinate={initialCenter}
+          animationMode={"flyTo"}
+          animationDuration={0}
+        />
+        {renderRoutes}
+        {startCoords && !isNaN(startCoords[0]) && !isNaN(startCoords[1]) && (
+          <MapboxGL.PointAnnotation
+            id="startMarker"
+            coordinate={startCoords}
+            style={{ zIndex: 1000 }}
+          >
+            <View style={styles.markerContainer}>
+              <Text style={styles.markerText}>📍</Text>
+            </View>
+          </MapboxGL.PointAnnotation>
+        )}
+        {endCoords && !isNaN(endCoords[0]) && !isNaN(endCoords[1]) && (
+          <MapboxGL.PointAnnotation
+            id="endMarker"
+            coordinate={endCoords}
+            style={{ zIndex: 1000 }}
+          >
+            <View style={styles.markerContainer}>
+              <Text style={styles.markerText}>🏁</Text>
+            </View>
+          </MapboxGL.PointAnnotation>
+        )}
+        {children}
+      </MapboxGL.MapView>
+    </View>
+  );
 };
 
-const MapWrapper = forwardRef(
-  (
-    {
-      mapboxAccessToken,
-      startCoords,
-      endCoords,
-      initialCenter,
-      initialZoom,
-      styleURL = MapboxGL.StyleURL.Street,
-      onMapLoaded,
-      children,
-      layersVisibility = {}, // This prop is not directly used in MapWrapper but passed down
-    },
-    ref
-  ) => {
-    const mapViewRef = useRef(null);
-    const cameraRef = useRef(null);
-    const [isMapReady, setIsMapReady] = useState(false);
-
-    useImperativeHandle(ref, () => ({
-      /**
-       * Fits the map camera to a given bounding box.
-       * @param {Array<number>} ne Northeast coordinate [lon, lat].
-       * @param {Array<number>} sw Southwest coordinate [lon, lat].
-       * @param {Array<number>} padding Padding for the bounds [top, right, bottom, left].
-       * @param {number} duration Animation duration in milliseconds.
-       */
-      fitBounds: (ne, sw, padding, duration) => {
-        if (!cameraRef.current) {
-          console.error(
-            "MapWrapper: cameraRef.current is undefined, cannot set bounds."
-          );
-          return;
-        }
-
-        // Validate NE and SW coordinates
-        const isValidCoord = (coord) =>
-          Array.isArray(coord) &&
-          coord.length === 2 &&
-          typeof coord[0] === "number" &&
-          typeof coord[1] === "number" &&
-          !isNaN(coord[0]) &&
-          !isNaN(coord[1]);
-
-        if (!isValidCoord(ne)) {
-          console.error(
-            "MapWrapper: Invalid NE coordinates provided to fitBounds:",
-            ne
-          );
-          return;
-        }
-        if (!isValidCoord(sw)) {
-          console.error(
-            "MapWrapper: Invalid SW coordinates provided to fitBounds:",
-            sw
-          );
-          return;
-        }
-
-        console.log("MapWrapper: Calling setCamera with bounds:", {
-          ne,
-          sw,
-          padding,
-          duration,
-        });
-
-        try {
-          cameraRef.current.setCamera({
-            bounds: { ne, sw },
-            padding: {
-              paddingTop: padding[0],
-              paddingRight: padding[1],
-              paddingBottom: padding[2],
-              paddingLeft: padding[3],
-            },
-            animationDuration: duration,
-          });
-        } catch (error) {
-          console.error("MapWrapper: Error in setCamera:", error);
-        }
-      },
-      getMapRef: () => mapViewRef.current,
-      calculateBoundingBox, // Expose the improved calculateBoundingBox
-      /**
-       * Sets the map camera with a custom configuration.
-       * @param {Object} config Camera configuration object.
-       */
-      setCamera: (config) => {
-        if (cameraRef.current) {
-          console.log("MapWrapper: Calling setCamera with config:", config);
-          cameraRef.current.setCamera(config);
-        } else {
-          console.warn(
-            "MapWrapper: cameraRef.current is not available for setCamera call."
-          );
-        }
-      },
-    }));
-
-    useEffect(() => {
-      if (mapboxAccessToken) {
-        MapboxGL.setAccessToken(mapboxAccessToken);
-      } else {
-        console.error("Mapbox Access Token is not provided to MapWrapper.");
-      }
-    }, [mapboxAccessToken]);
-
-    const handleMapReady = useCallback(() => {
-      console.log("MapWrapper: Map is ready and style loaded.");
-      setIsMapReady(true);
-      onMapLoaded?.();
-    }, [onMapLoaded]);
-
-    useEffect(() => {
-      console.log("MapWrapper: Props updated:", { startCoords, endCoords });
-    }, [startCoords, endCoords]);
-
-    return (
-      <View style={styles.container}>
-        <MapboxGL.MapView
-          ref={mapViewRef}
-          style={styles.map}
-          styleURL={styleURL}
-          onDidFinishLoadingMap={handleMapReady}
-        >
-          {/* <MapboxGL.Images
-            images={{
-              "pin-start": require("../assets/images/marker-start.png"), // Đường dẫn đến ảnh marker
-              "pin-end": require("../assets/images/marker-end.png"), // Đường dẫn đến ảnh marker
-            }}
-          /> */}
-          <MapboxGL.Camera
-            ref={cameraRef}
-            centerCoordinate={initialCenter}
-            zoomLevel={initialZoom}
-          />
-          {children}
-        </MapboxGL.MapView>
-      </View>
-    );
-  }
-);
-
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  map: { flex: 1 },
-  marker: { alignItems: "center", justifyContent: "center" },
-  markerCircle: {
+  mapContainer: {
+    flex: 1,
+  },
+  map: {
+    flex: 1,
+  },
+  markerContainer: {
     width: 30,
     height: 30,
-    borderRadius: 15,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#fff",
   },
-  startMarker: { backgroundColor: "#28a745" }, // Green
-  endMarker: { backgroundColor: "#dc3545" }, // Red
-  markerText: { color: "#fff", fontWeight: "bold", fontSize: 14 },
+  markerText: {
+    fontSize: 24,
+  },
 });
 
 export default MapWrapper;

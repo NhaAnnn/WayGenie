@@ -1,4 +1,3 @@
-// screens/LoginScreen.js (file thực tế của bạn)
 import React, { useState } from "react";
 import {
   View,
@@ -7,42 +6,37 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
-  // Thêm Alert nếu bạn dùng để hiển thị lỗi pop-up
   Alert,
 } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 
 function LoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const { login, isLoading, error, authToken, userRole } = useAuth(); // Lấy từ context gốc của bạn
+  const { login, isLoading, error, authToken } = useAuth();
+  const navigation = useNavigation();
 
   const handleLogin = async () => {
+    if (!username || !password) {
+      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu!");
+      return;
+    }
     const result = await login(username, password);
     if (!result.success) {
-      console.error("Đăng nhập thất bại:", result.error);
-      // Bạn có thể hiển thị Alert.alert(result.error) ở đây nếu muốn thông báo pop-up
+      Alert.alert("Lỗi đăng nhập", result.error || "Đã có lỗi xảy ra!");
+    } else {
+      Alert.alert("Thành công", "Đăng nhập thành công!");
     }
   };
 
-  // Logic điều hướng sau khi đăng nhập thành công sẽ nằm trong AppNavigator
-  // isAuthenticated (hoặc authToken) sẽ được dùng để điều hướng tự động bởi AppNavigator
-  // Nếu bạn muốn hiển thị màn hình "Đăng nhập thành công" ngay tại đây, bạn sẽ cần logic để kiểm tra authToken hoặc isAuthenticated từ context
-  // Ví dụ:
   if (authToken) {
-    // Kiểm tra authToken thay vì isAuthenticated nếu bạn dùng context gốc
     return (
       <View style={styles.centeredContainer}>
         <Text style={styles.title}>Đăng nhập thành công!</Text>
         <Text style={styles.subtitle}>Chào mừng bạn trở lại!</Text>
-        {/* Nút này có thể điều hướng đi đâu đó hoặc làm mới */}
         <TouchableOpacity
-          onPress={() => {
-            // Thay vì window.location.reload() (chỉ dùng cho web), bạn sẽ cần điều hướng trong React Native
-            // Ví dụ: navigation.navigate('Home'); (nếu bạn có navigation prop)
-            // Hoặc đơn giản là để AppNavigator tự điều hướng
-            console.log("Đăng nhập thành công, AppNavigator sẽ tự điều hướng!");
-          }}
+          onPress={() => navigation.navigate("Home")}
           style={styles.button}
         >
           <Text style={styles.buttonText}>Tiếp tục</Text>
@@ -59,7 +53,7 @@ function LoginScreen() {
         <TextInput
           value={username}
           onChangeText={setUsername}
-          placeholder="Tên đăng nhập"
+          placeholder="Email"
           style={styles.input}
           autoCapitalize="none"
         />
@@ -70,9 +64,13 @@ function LoginScreen() {
           secureTextEntry
           style={styles.input}
         />
-
-        {error && <Text style={styles.errorText}>{error}</Text>}
-
+        <View style={styles.forgotPasswordContainer}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("ForgotPassword")}
+          >
+            <Text style={styles.footerLink}>Quên mật khẩu?</Text>
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity
           onPress={handleLogin}
           disabled={isLoading}
@@ -84,18 +82,24 @@ function LoginScreen() {
             <Text style={styles.buttonText}>Đăng nhập</Text>
           )}
         </TouchableOpacity>
+
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Bạn chưa có tài khoản?</Text>
+          <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+            <Text style={styles.footerLink}> Đăng ký</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // ... (các styles của bạn)
   container: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#4A90E2", // background color
+    backgroundColor: "#4A90E2",
     padding: 20,
   },
   formContainer: {
@@ -140,6 +144,10 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     backgroundColor: "#A0B4C1",
   },
+  forgotPasswordContainer: {
+    alignItems: "flex-end",
+    marginBottom: 15,
+  },
   buttonText: {
     color: "white",
     fontSize: 18,
@@ -157,15 +165,20 @@ const styles = StyleSheet.create({
     backgroundColor: "#4A90E2",
     padding: 20,
   },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 15,
+  },
+  footerText: {
+    fontSize: 14,
+    color: "#666",
+  },
+  footerLink: {
+    fontSize: 14,
+    color: "#4A90E2",
+    fontWeight: "bold",
+  },
 });
 
-export default LoginScreen; // <-- CHỈ XUẤT LoginScreen mặc định
-
-// XÓA BỎ DÒNG SAU NẾU CÓ:
-// export default function App() {
-//   return (
-//     <AuthProvider>
-//       <LoginScreen />
-//     </AuthProvider>
-//   );
-// }
+export default LoginScreen;

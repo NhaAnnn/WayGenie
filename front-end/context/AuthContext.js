@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
@@ -12,7 +18,6 @@ const ROLE_KEY = "userRole";
 
 const BASE_URL = `${BACKEND_API_BASE_URL}/auth`;
 
-// Hàm lưu trữ an toàn (dựa vào nền tảng)
 const saveAuthData = async (token, role, user) => {
   if (Platform.OS === "web") {
     await AsyncStorage.setItem(TOKEN_KEY, token);
@@ -25,7 +30,6 @@ const saveAuthData = async (token, role, user) => {
   }
 };
 
-// Hàm lấy token và vai trò an toàn (dựa vào nền tảng)
 const getAuthData = async () => {
   let token = null;
   let role = null;
@@ -44,7 +48,6 @@ const getAuthData = async () => {
   return { token, role, user };
 };
 
-// Hàm xóa token và vai trò an toàn (dựa vào nền tảng)
 const deleteAuthData = async () => {
   if (Platform.OS === "web") {
     await AsyncStorage.removeItem(TOKEN_KEY);
@@ -60,11 +63,10 @@ const deleteAuthData = async () => {
 export const AuthProvider = ({ children }) => {
   const [authToken, setAuthToken] = useState(null);
   const [userRole, setUserRole] = useState(null);
-  const [user, setUser] = useState(null); // Thêm state user
+  const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Tải token từ bộ nhớ khi component khởi tạo
   useEffect(() => {
     const loadToken = async () => {
       try {
@@ -78,9 +80,8 @@ export const AuthProvider = ({ children }) => {
               setAuthToken(token);
               setUserRole(payload.role || "user");
               if (user) {
-                setUser(user); // Sử dụng user từ storage
+                setUser(user);
               } else {
-                // Nếu không có user trong storage, lấy từ API
                 const response = await axios.get(`${BASE_URL}/me`, {
                   headers: { Authorization: `Bearer ${token}` },
                 });
@@ -94,7 +95,6 @@ export const AuthProvider = ({ children }) => {
               axios.defaults.headers.common[
                 "Authorization"
               ] = `Bearer ${token}`;
-              // console.log("Loaded JWT from storage. User:", user || payload);
             } catch (e) {
               console.warn("Invalid JWT format in storage. Clearing token.");
               await deleteAuthData();
@@ -123,7 +123,6 @@ export const AuthProvider = ({ children }) => {
     loadToken();
   }, []);
 
-  // Hàm đăng nhập
   const login = async (email, password) => {
     setIsLoading(true);
     setError(null);
@@ -147,7 +146,7 @@ export const AuthProvider = ({ children }) => {
       await saveAuthData(token, user.role, user);
       setAuthToken(token);
       setUserRole(user.role);
-      setUser(user); // Lưu thông tin user
+      setUser(user);
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
       return {
@@ -179,7 +178,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Hàm đăng ký
   const register = async (username, email, password) => {
     setError(null);
 
@@ -210,7 +208,7 @@ export const AuthProvider = ({ children }) => {
       await saveAuthData(token, role, { ...user, role });
       setAuthToken(token);
       setUserRole(role);
-      setUser({ ...user, role }); // Lưu thông tin user
+      setUser({ ...user, role });
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       console.log("Register successful. User:", { ...user, role });
 
@@ -241,7 +239,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Hàm đăng xuất
   const logout = async () => {
     setIsLoading(true);
     try {
@@ -261,6 +258,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updateUser = useCallback(
+    (updatedUser) => {
+      setUser(updatedUser);
+      saveAuthData(authToken, updatedUser.role || userRole, updatedUser);
+    },
+    [authToken, userRole]
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -272,6 +277,7 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         register,
+        updateUser,
       }}
     >
       {children}

@@ -151,11 +151,11 @@ const AdminDashboardScreen = () => {
       title: "Quản lý Trạm quan trắc",
       screen: "StationManagement",
     },
-    {
-      icon: "git-branch-outline",
-      title: "Giao thông giả lập",
-      screen: "SimulatedTraffic",
-    },
+    // {
+    //   icon: "git-branch-outline",
+    //   title: "Giao thông giả lập",
+    //   screen: "SimulatedTraffic",
+    // },
     {
       icon: "cloud-upload",
       title: "Thêm tọa độ và tuyến đường từ file",

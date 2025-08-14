@@ -30,7 +30,7 @@ ChartJS.register(
   Legend
 );
 
-const StatisticalManagementSection = ({ setActiveSection }) => {
+const StatisticalManagement = ({ setActiveSection }) => {
   const [dayStats, setDayStats] = useState(null);
   const [monthStats, setMonthStats] = useState(null);
   const [dailyStats, setDailyStats] = useState([]);
@@ -104,7 +104,9 @@ const StatisticalManagementSection = ({ setActiveSection }) => {
             item.dateKey.startsWith(month)
           );
           const totalRequests = monthData.length;
-          return { month, totalRequests };
+          const uniqueUsers = [...new Set(monthData.map((item) => item.userId))]
+            .length;
+          return { month, totalRequests, uniqueUsers };
         });
         setMonthlyStats(monthlyStatsData);
 
@@ -190,6 +192,15 @@ const StatisticalManagementSection = ({ setActiveSection }) => {
         tension: 0.1,
         pointRadius: 3,
       },
+      {
+        label: "Tổng số người dùng truy cập (Tháng)",
+        data: monthlyStats.map((stat) => stat.uniqueUsers || 0),
+        borderColor: "rgba(153, 102, 255, 1)",
+        backgroundColor: "rgba(153, 102, 255, 0.5)",
+        fill: false,
+        tension: 0.1,
+        pointRadius: 3,
+      },
     ],
   };
 
@@ -199,7 +210,7 @@ const StatisticalManagementSection = ({ setActiveSection }) => {
       legend: { position: "top" },
       title: {
         display: true,
-        text: "Thống kê lượt tìm kiếm theo tháng năm 2025",
+        text: "Thống kê lượt tìm kiếm và người dùng theo tháng năm 2025",
         font: { size: 16 },
         color: "#333",
       },
@@ -216,6 +227,16 @@ const StatisticalManagementSection = ({ setActiveSection }) => {
       },
     },
   };
+
+  // Tính tổng lượt tìm kiếm và người dùng trong tuần
+  const weeklyTotalRequests = dailyStats.reduce(
+    (sum, stat) => sum + (stat.totalRequests || 0),
+    0
+  );
+  const weeklyTotalUsers = dailyStats.reduce(
+    (sum, stat) => sum + (stat.uniqueUsers || 0),
+    0
+  );
 
   if (loading) {
     return (
@@ -238,14 +259,26 @@ const StatisticalManagementSection = ({ setActiveSection }) => {
       <ScrollView contentContainerStyle={styles.contentContainer}>
         <View style={styles.chartRow}>
           <View style={styles.totalContainer}>
-            <Text style={styles.totalTitle}>Tổng lượt tìm kiếm hôm nay</Text>
-            <Text style={styles.totalText}>
-              {dayStats ? dayStats.totalRequests : 0}
-            </Text>
-            <Text style={styles.totalTitle}>Tổng người dùng hôm nay</Text>
-            <Text style={styles.totalText}>
-              {dayStats ? dayStats.uniqueUsers : 0}
-            </Text>
+            <View style={styles.statSection}>
+              <Text style={styles.totalTitle}>Tổng lượt tìm kiếm hôm nay</Text>
+              <Text style={styles.totalText}>
+                {dayStats ? dayStats.totalRequests : 0} lượt
+              </Text>
+              <Text style={styles.totalTitle}>Tổng người dùng hôm nay</Text>
+              <Text style={styles.totalText}>
+                {dayStats ? dayStats.uniqueUsers : 0} người
+              </Text>
+            </View>
+            <View style={styles.statSection}>
+              <Text style={styles.totalTitle}>
+                Tổng số lượt tìm kiếm trong tuần
+              </Text>
+              <Text style={styles.totalText}>{weeklyTotalRequests} lượt</Text>
+              <Text style={styles.totalTitle}>
+                Tổng số người dùng truy cập trong tuần
+              </Text>
+              <Text style={styles.totalText}>{weeklyTotalUsers} người</Text>
+            </View>
           </View>
           <View style={styles.chartContainer}>
             <Line data={dailyChartData} options={dailyChartOptions} />
@@ -253,10 +286,18 @@ const StatisticalManagementSection = ({ setActiveSection }) => {
         </View>
         <View style={styles.chartRow}>
           <View style={styles.totalContainer}>
-            <Text style={styles.totalTitle}>Tổng lượt tìm kiếm tháng</Text>
-            <Text style={styles.totalText}>
-              {monthStats ? monthStats.totalRequests : 0}
-            </Text>
+            <View style={styles.statSection}>
+              <Text style={styles.totalTitle}>Tổng lượt tìm kiếm tháng</Text>
+              <Text style={styles.totalText}>
+                {monthStats ? monthStats.totalRequests : 0} lượt
+              </Text>
+              <Text style={styles.totalTitle}>
+                Tổng số người dùng truy cập trong tháng
+              </Text>
+              <Text style={styles.totalText}>
+                {monthStats ? monthStats.uniqueUsers : 0} người
+              </Text>
+            </View>
           </View>
           <View style={styles.chartContainer}>
             <Line data={monthlyChartData} options={monthlyChartOptions} />
@@ -291,6 +332,13 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  statSection: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
   totalTitle: {
     fontSize: 16,
     fontWeight: "600",
@@ -312,4 +360,4 @@ const styles = StyleSheet.create({
   errorText: { fontSize: 16, color: "red", textAlign: "center" },
 });
 
-export default StatisticalManagementSection;
+export default StatisticalManagement;

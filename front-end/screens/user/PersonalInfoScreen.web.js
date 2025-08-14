@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  Alert,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useAuth } from "../../context/AuthContext";
@@ -15,6 +16,7 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { BACKEND_API_BASE_URL } from "../../secrets";
 import { Ionicons } from "@expo/vector-icons";
+import axios from "axios";
 
 const ProfileUpdate = () => {
   const { authToken, user, updateUser } = useAuth();
@@ -28,7 +30,6 @@ const ProfileUpdate = () => {
   const [loading, setLoading] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
 
-  // Fetch user information when the screen loads
   useEffect(() => {
     if (user) {
       const initialFormData = {
@@ -41,43 +42,53 @@ const ProfileUpdate = () => {
       setIsDataLoading(false);
     } else {
       setIsDataLoading(false);
-      toast.error(
+      showToast(
         "Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.",
-        {
-          position: "top-right",
-          autoClose: 3000,
-        }
+        "error"
       );
       navigation.navigate("Login");
     }
   }, [user, navigation]);
 
-  // Handle input changes
-  const handleInputChange = (field, value) => {
-    setFormData((prev) => {
-      const newFormData = { ...prev, [field]: value };
-      return newFormData;
-    });
+  const showToast = (message, type = "success") => {
+    if (Platform.OS === "web") {
+      if (type === "success") {
+        toast.success(message, {
+          position: "top-right",
+          autoClose: 2000,
+        });
+      } else {
+        toast.error(message, {
+          position: "top-right",
+          autoClose: 3000,
+        });
+      }
+    } else {
+      Alert.alert(type === "success" ? "Thành công" : "Lỗi", message);
+    }
   };
 
-  // Validate email format
+  const handleInputChange = useCallback((field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }, []);
+
   const isValidEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
-  // Validate phone number format
   const isValidPhone = (phone) => {
     const phoneRegex = /^(\+?\d{1,3}[- ]?)?\d{3}[- ]?\d{3}[- ]?\d{4}$/;
     return phoneRegex.test(phone);
   };
 
-  // Validate address format
   const isValidAddress = (address) => {
     return address.length >= 3 && address.length <= 200;
   };
 
-  // Submit updated user information
   const handleUpdate = async () => {
     if (
       !formData.username ||
@@ -85,92 +96,80 @@ const ProfileUpdate = () => {
       !formData.phone ||
       !formData.address
     ) {
-      toast.error("Vui lòng điền đầy đủ tất cả các trường.", {
-        position: "top-right",
-        autoClose: 3000,
-      });
+      showToast("Vui lòng điền đầy đủ tất cả các trường.", "error");
       return;
     }
 
     if (!isValidEmail(formData.email)) {
-      toast.error("Email không hợp lệ.", {
-        position: "top-right",
-        autoClose: 3000,
-      });
+      showToast("Email không hợp lệ.", "error");
       return;
     }
 
     if (!isValidPhone(formData.phone)) {
-      toast.error("Số điện thoại không hợp lệ.", {
-        position: "top-right",
-        autoClose: 3000,
-      });
+      showToast("Số điện thoại không hợp lệ.", "error");
       return;
     }
 
     if (!isValidAddress(formData.address)) {
-      toast.error("Địa chỉ phải từ 3 ký tự trở lên.", {
-        position: "top-right",
-        autoClose: 3000,
-      });
+      showToast("Địa chỉ phải từ 3 ký tự trở lên.", "error");
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(`${BACKEND_API_BASE_URL}/auth/${user.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
+      const response = await axios.put(
+        `${BACKEND_API_BASE_URL}/auth/${user.id}`,
+        {
           username: formData.username,
           email: formData.email,
           phone: formData.phone,
           address: formData.address,
-        }),
-      });
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        }
+      );
 
-      const data = await response.json();
+      const { user: updatedUser } = response.data;
+      console.log("API response:", response.data);
 
-      if (!response.ok) {
-        throw new Error(data.message || "Lỗi khi cập nhật thông tin.");
-      }
-
-      if (!data.user) {
+      if (!updatedUser) {
         throw new Error("Dữ liệu người dùng không được trả về từ API.");
       }
 
       const updatedFormData = {
-        username: data.user.username || "",
-        email: data.user.email || "",
-        phone: data.user.phone || "",
-        address: data.user.address || "",
+        username: updatedUser.username || "",
+        email: updatedUser.email || "",
+        phone: updatedUser.phone || "",
+        address: updatedUser.address || "",
       };
       setFormData(updatedFormData);
+      console.log("Updated formData:", updatedFormData);
 
-      if (updateUser) {
-        const updatedUser = {
-          ...user,
-          username: data.user.username || "",
-          email: data.user.email || "",
-          phone: data.user.phone || "",
-          address: data.user.address || "",
-          role: data.user.role || user.role,
-        };
-        updateUser(updatedUser);
-      }
-
-      toast.success("Thông tin cá nhân của bạn đã được cập nhật.", {
-        position: "top-right",
-        autoClose: 2000,
+      updateUser({
+        ...user,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        address: updatedUser.address,
+        role: updatedUser.role || user.role,
       });
+
+      showToast("Thông tin cá nhân của bạn đã được cập nhật.", "success");
+      setTimeout(() => navigation.navigate("Home"), 2000);
     } catch (error) {
-      toast.error(error.message || "Không thể cập nhật thông tin.", {
-        position: "top-right",
-        autoClose: 3000,
-      });
+      console.error("Update error:", error);
+      if (error.response?.status === 401) {
+        showToast("Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.", "error");
+        navigation.navigate("Login");
+      } else {
+        showToast(
+          error.response?.data?.message || "Không thể cập nhật thông tin.",
+          "error"
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -187,7 +186,7 @@ const ProfileUpdate = () => {
 
   return (
     <View style={styles.container}>
-      <ToastContainer />
+      {Platform.OS === "web" && <ToastContainer />}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -267,6 +266,7 @@ const ProfileUpdate = () => {
   );
 };
 
+// Giữ nguyên styles như bạn đã cung cấp
 const styles = StyleSheet.create({
   container: {
     flex: 1,

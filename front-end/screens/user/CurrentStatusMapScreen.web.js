@@ -6,9 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
-  FlatList,
   ScrollView,
-  Alert,
   ActivityIndicator,
   Keyboard,
   Dimensions,
@@ -18,9 +16,9 @@ import {
   LayoutAnimation,
 } from "react-native";
 import axios from "axios";
-import { useAuth } from "../../context/AuthContext"; // Import useAuth
+import { useAuth } from "../../context/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
-import { transportModes } from "../../data/transportModes";
+import { transportModes } from "../../data/transportCurrentModel";
 import {
   MAPBOX_PUBLIC_ACCESS_TOKEN,
   BACKEND_API_BASE_URL,
@@ -28,10 +26,11 @@ import {
 import MapWrapper from "../../components/MapWrapper";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const AIR_QUALITY_API_URL = `${BACKEND_API_BASE_URL}/aqis`;
 
 export default function CurrentStatusMapScreen({ navigation }) {
-  const { user } = useAuth(); // Lấy thông tin user từ AuthContext
-  const userId = user?.id; // Lấy userId từ user, kiểm tra null/undefined
+  const { user } = useAuth();
+  const userId = user?.id;
 
   // State for addresses and coordinates
   const [start, setStart] = useState("");
@@ -64,20 +63,6 @@ export default function CurrentStatusMapScreen({ navigation }) {
   const [isError, setIsError] = useState(false);
   const SEARCH_ROUTE_API_URL = `${BACKEND_API_BASE_URL}/search-route`;
 
-  // Data for map layers - initialized as empty
-  const [trafficData, setTrafficData] = useState({
-    type: "FeatureCollection",
-    features: [],
-  });
-  const [airQualityData, setAirQualityData] = useState({
-    type: "FeatureCollection",
-    features: [],
-  });
-  const [coordinatesData, setCoordinatesData] = useState({
-    type: "FeatureCollection",
-    features: [],
-  });
-
   const debounceTimeout = useRef(null);
 
   // Route preference options
@@ -85,7 +70,7 @@ export default function CurrentStatusMapScreen({ navigation }) {
     { id: "fastest", label: "Nhanh nhất", icon: "rocket" },
     { id: "shortest", label: "Ngắn nhất", icon: "resize" },
     { id: "eco", label: "Ít ô nhiễm", icon: "leaf" },
-    { id: "less_traffic", label: "Ít tắc đường", icon: "car" },
+    { id: "least_emission", label: "Ít phát thải", icon: "cloud" },
   ];
 
   // Fetch route when mode or preference changes
@@ -164,6 +149,54 @@ export default function CurrentStatusMapScreen({ navigation }) {
     return (distanceKm * (emissionFactors[transportMode] || 150)).toFixed(0);
   }, []);
 
+  // Calculate average coordinates of a route
+  const calculateAverageCoords = useCallback((geometry) => {
+    if (!geometry || !geometry.coordinates || !geometry.coordinates.length) {
+      return [0, 0];
+    }
+    const coords = geometry.coordinates;
+    const avgLat =
+      coords.reduce((sum, coord) => sum + coord[1], 0) / coords.length;
+    const avgLon =
+      coords.reduce((sum, coord) => sum + coord[0], 0) / coords.length;
+    return [avgLon, avgLat];
+  }, []);
+
+  // Fetch air quality data for a given coordinate
+  const fetchAirQuality = async (lon, lat) => {
+    try {
+      const res = await axios.get(AIR_QUALITY_API_URL, {
+        params: {
+          stationName: "", // Không lọc theo stationName để lấy tất cả
+        },
+      });
+      const aqisRecords = res.data;
+      if (!aqisRecords || aqisRecords.length === 0) {
+        return { pm25: 0 };
+      }
+
+      // Tìm trạm gần nhất dựa trên khoảng cách Euclidean
+      let nearestStation = null;
+      let minDistance = Infinity;
+      aqisRecords.forEach((record) => {
+        if (record.location && record.location.coordinates) {
+          const [stationLon, stationLat] = record.location.coordinates;
+          const distance = Math.sqrt(
+            Math.pow(stationLon - lon, 2) + Math.pow(stationLat - lat, 2)
+          );
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestStation = record;
+          }
+        }
+      });
+      return nearestStation ? { pm25: nearestStation.pm25 || 0 } : { pm25: 0 };
+    } catch (error) {
+      console.error("Error fetching air quality data:", error);
+      return { pm25: 0 };
+    }
+  };
+
   // Sort routes by preference
   const sortRoutesByPreference = useCallback((routes, preference) => {
     if (!routes || routes.length === 0) return routes;
@@ -176,14 +209,10 @@ export default function CurrentStatusMapScreen({ navigation }) {
         sortedRoutes.sort((a, b) => a.distance - b.distance);
         break;
       case "eco":
-        sortedRoutes.sort((a, b) => a.emissions - b.emissions);
+        sortedRoutes.sort((a, b) => (a.pollution || 0) - (b.pollution || 0));
         break;
-      case "less_traffic":
-        sortedRoutes.sort((a, b) => {
-          const trafficFactorA = a.distance / a.duration;
-          const trafficFactorB = b.distance / b.duration;
-          return trafficFactorB - trafficFactorA;
-        });
+      case "least_emission":
+        sortedRoutes.sort((a, b) => a.emissions - b.emissions);
         break;
       default:
         break;
@@ -191,7 +220,7 @@ export default function CurrentStatusMapScreen({ navigation }) {
     return sortedRoutes;
   }, []);
 
-  // Fetch routes from Mapbox API and send to backend for stats
+  // Fetch routes from Mapbox API and air quality data
   const fetchRoute = async () => {
     if (!startCoords || !endCoords || !userId) {
       setError("Vui lòng chọn điểm đi và điểm đến, hoặc đăng nhập.");
@@ -204,13 +233,6 @@ export default function CurrentStatusMapScreen({ navigation }) {
     try {
       const startLonLat = `${startCoords[1]},${startCoords[0]}`;
       const endLonLat = `${endCoords[1]},${endCoords[0]}`;
-      let additionalParams = {};
-      if (mode === "driving" || mode === "driving-traffic") {
-        additionalParams = {
-          annotations: "congestion",
-          overview: "full",
-        };
-      }
       const res = await axios.get(
         `https://api.mapbox.com/directions/v5/mapbox/${mode}/${startLonLat};${endLonLat}`,
         {
@@ -220,27 +242,29 @@ export default function CurrentStatusMapScreen({ navigation }) {
             steps: false,
             alternatives: true,
             language: "vi",
-            ...additionalParams,
           },
           timeout: 300000,
         }
       );
       if (res.data.routes && res.data.routes.length > 0) {
-        const pollution = res.data.routes[0].congestion
-          ? res.data.routes[0].congestion.reduce(
-              (sum, c) => sum + (c.numeric || 0),
-              0
-            ) / res.data.routes[0].congestion.length
-          : 0;
-        let routesData = res.data.routes.map((route, index) => ({
-          geometry: route.geometry,
-          distance: route.distance,
-          duration: route.duration / 60,
-          emissions: parseFloat(calculateEmissions(route.distance, mode)),
-          congestion: pollution,
-        }));
-        routesData = sortRoutesByPreference(routesData, routePreference);
-        setRoutes(routesData);
+        const routesData = await Promise.all(
+          res.data.routes.map(async (route) => {
+            const [avgLon, avgLat] = calculateAverageCoords(route.geometry);
+            const airQuality = await fetchAirQuality(avgLon, avgLat);
+            return {
+              geometry: route.geometry,
+              distance: route.distance,
+              duration: route.duration / 60,
+              emissions: parseFloat(calculateEmissions(route.distance, mode)),
+              pollution: parseFloat(airQuality.pm25.toFixed(1)),
+            };
+          })
+        );
+        const sortedRoutes = sortRoutesByPreference(
+          routesData,
+          routePreference
+        );
+        setRoutes(sortedRoutes);
 
         // Gửi dữ liệu thống kê lên server
         const dateKey = new Date().toLocaleDateString("en-CA", {
@@ -313,7 +337,6 @@ export default function CurrentStatusMapScreen({ navigation }) {
           initialCenter={[105.8342, 21.0278]}
           initialZoom={12}
           layersVisibility={layersVisibility}
-          trafficData={trafficData}
         />
       </View>
 
@@ -474,34 +497,112 @@ export default function CurrentStatusMapScreen({ navigation }) {
               )}
               {routes.length > 0 && (
                 <View style={styles.routeInfoContainer}>
-                  <View style={styles.routeInfoItem}>
-                    <Text style={styles.routeInfoLabel}>Độ dài:</Text>
-                    <Text style={styles.routeInfoValue}>
-                      {(routes[selectedRouteIndex].distance / 1000).toFixed(1)}{" "}
-                      km
-                    </Text>
-                  </View>
-                  <View style={styles.routeInfoItem}>
-                    <Text style={styles.routeInfoLabel}>Lượng khí thải:</Text>
-                    <Text style={styles.routeInfoValue}>
-                      {routes[selectedRouteIndex].emissions} g CO2
-                    </Text>
-                  </View>
-                  <View style={styles.routeInfoItem}>
-                    <Text style={styles.routeInfoLabel}>Thời gian:</Text>
-                    <Text style={styles.routeInfoValue}>
-                      {Math.floor(routes[selectedRouteIndex].duration)} phút
-                    </Text>
-                  </View>
-                  <View style={styles.routeInfoItem}>
-                    <Text style={styles.routeInfoLabel}>Ưu tiên:</Text>
-                    <Text style={styles.routeInfoValue}>
-                      {
-                        routePreferences.find((p) => p.id === routePreference)
-                          ?.label
-                      }
-                    </Text>
-                  </View>
+                  {routePreference === "fastest" ? (
+                    <>
+                      <View style={styles.routeInfoItem}>
+                        <Text style={styles.routeInfoLabel}>Thời gian:</Text>
+                        <Text style={styles.routeInfoValue}>
+                          {Math.floor(routes[selectedRouteIndex].duration)} phút
+                        </Text>
+                      </View>
+                      <View style={styles.routeInfoItem}>
+                        <Text style={styles.routeInfoLabel}>Ưu tiên:</Text>
+                        <Text style={styles.routeInfoValue}>
+                          {
+                            routePreferences.find(
+                              (p) => p.id === routePreference
+                            )?.label
+                          }
+                        </Text>
+                      </View>
+                    </>
+                  ) : routePreference === "shortest" ? (
+                    <>
+                      <View style={styles.routeInfoItem}>
+                        <Text style={styles.routeInfoLabel}>Độ dài:</Text>
+                        <Text style={styles.routeInfoValue}>
+                          {(routes[selectedRouteIndex].distance / 1000).toFixed(
+                            1
+                          )}{" "}
+                          km
+                        </Text>
+                      </View>
+                      <View style={styles.routeInfoItem}>
+                        <Text style={styles.routeInfoLabel}>Ưu tiên:</Text>
+                        <Text style={styles.routeInfoValue}>
+                          {
+                            routePreferences.find(
+                              (p) => p.id === routePreference
+                            )?.label
+                          }
+                        </Text>
+                      </View>
+                    </>
+                  ) : routePreference === "eco" ? (
+                    <>
+                      <View style={styles.routeInfoItem}>
+                        <Text style={styles.routeInfoLabel}>Độ dài:</Text>
+                        <Text style={styles.routeInfoValue}>
+                          {(routes[selectedRouteIndex].distance / 1000).toFixed(
+                            1
+                          )}{" "}
+                          km
+                        </Text>
+                      </View>
+                      <View style={styles.routeInfoItem}>
+                        <Text style={styles.routeInfoLabel}>Độ ô nhiễm:</Text>
+                        <Text style={styles.routeInfoValue}>
+                          {(
+                            routes[selectedRouteIndex].pollution *
+                              (1.8 *
+                                (routes[selectedRouteIndex].distance / 1000)) ||
+                            0
+                          ).toFixed(1)}{" "}
+                          µg/m³
+                        </Text>
+                      </View>
+                      <View style={styles.routeInfoItem}>
+                        <Text style={styles.routeInfoLabel}>Ưu tiên:</Text>
+                        <Text style={styles.routeInfoValue}>
+                          {
+                            routePreferences.find(
+                              (p) => p.id === routePreference
+                            )?.label
+                          }
+                        </Text>
+                      </View>
+                    </>
+                  ) : routePreference === "least_emission" ? (
+                    <>
+                      <View style={styles.routeInfoItem}>
+                        <Text style={styles.routeInfoLabel}>Độ dài:</Text>
+                        <Text style={styles.routeInfoValue}>
+                          {(routes[selectedRouteIndex].distance / 1000).toFixed(
+                            1
+                          )}{" "}
+                          km
+                        </Text>
+                      </View>
+                      <View style={styles.routeInfoItem}>
+                        <Text style={styles.routeInfoLabel}>
+                          Lượng khí thải:
+                        </Text>
+                        <Text style={styles.routeInfoValue}>
+                          {routes[selectedRouteIndex].emissions} g CO2
+                        </Text>
+                      </View>
+                      <View style={styles.routeInfoItem}>
+                        <Text style={styles.routeInfoLabel}>Ưu tiên:</Text>
+                        <Text style={styles.routeInfoValue}>
+                          {
+                            routePreferences.find(
+                              (p) => p.id === routePreference
+                            )?.label
+                          }
+                        </Text>
+                      </View>
+                    </>
+                  ) : null}
                 </View>
               )}
             </ScrollView>
