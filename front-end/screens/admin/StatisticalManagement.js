@@ -35,6 +35,7 @@ const StatisticalManagement = ({ setActiveSection }) => {
   const [monthStats, setMonthStats] = useState(null);
   const [dailyStats, setDailyStats] = useState([]);
   const [monthlyStats, setMonthlyStats] = useState([]);
+  const [weeklyTotalUsers, setWeeklyTotalUsers] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -48,7 +49,7 @@ const StatisticalManagement = ({ setActiveSection }) => {
         });
         const thisMonth = today.substring(0, 7);
 
-        // Lấy dữ liệu theo ngày (7 ngày gần nhất)
+        // Tạo danh sách 7 ngày gần nhất
         const dailyDates = [];
         for (let i = 6; i >= 0; i--) {
           const date = new Date();
@@ -58,6 +59,7 @@ const StatisticalManagement = ({ setActiveSection }) => {
           );
         }
 
+        // Lấy dữ liệu theo ngày (7 ngày gần nhất)
         const dailyStatsPromises = dailyDates.map(async (date) => {
           try {
             const response = await axios.get(`${STATS_API_URL}/day/${date}`);
@@ -76,18 +78,21 @@ const StatisticalManagement = ({ setActiveSection }) => {
         console.log("Daily stats:", dailyStatsData);
         setDailyStats(dailyStatsData);
 
-        // Lấy dữ liệu theo tháng
-        const monthResponse = await axios.get(
-          `${STATS_API_URL}/month/${thisMonth}`
-        );
-        setMonthStats(monthResponse.data);
-
-        // Lấy dữ liệu tất cả (cho tháng)
+        // Lấy dữ liệu tất cả bản ghi trong 7 ngày để tính weeklyTotalUsers
         const allResponse = await axios.get(`${STATS_API_URL}/all`, {
-          params: { page: 1, limit: 1000 },
+          params: {
+            page: 1,
+            limit: 1000,
+            dateKey: dailyDates.join("|"), // Lọc theo danh sách ngày
+          },
         });
         const allData = allResponse.data.data;
+        const uniqueUsersInWeek = [
+          ...new Set(allData.map((item) => item.userID.toString())),
+        ].length;
+        setWeeklyTotalUsers(uniqueUsersInWeek);
 
+        // Lấy dữ liệu theo tháng (12 tháng gần nhất)
         const monthlyDates = [];
         for (let i = 11; i >= 0; i--) {
           const date = new Date();
@@ -99,19 +104,32 @@ const StatisticalManagement = ({ setActiveSection }) => {
             )}`
           );
         }
-        const monthlyStatsData = monthlyDates.map((month) => {
-          const monthData = allData.filter((item) =>
-            item.dateKey.startsWith(month)
-          );
-          const totalRequests = monthData.length;
-          const uniqueUsers = [...new Set(monthData.map((item) => item.userId))]
-            .length;
-          return { month, totalRequests, uniqueUsers };
+
+        const monthlyStatsPromises = monthlyDates.map(async (month) => {
+          try {
+            const response = await axios.get(`${STATS_API_URL}/month/${month}`);
+            return {
+              month,
+              totalRequests: response.data.totalRequests || 0,
+              uniqueUsers: response.data.uniqueUsers || 0,
+            };
+          } catch (err) {
+            console.error(`Error fetching ${month}:`, err.message);
+            return { month, totalRequests: 0, uniqueUsers: 0 };
+          }
         });
+        const monthlyStatsData = await Promise.all(monthlyStatsPromises);
         setMonthlyStats(monthlyStatsData);
 
+        // Lấy dữ liệu cho ngày hiện tại
         const dayResponse = await axios.get(`${STATS_API_URL}/day/${today}`);
         setDayStats(dayResponse.data);
+
+        // Lấy dữ liệu cho tháng hiện tại
+        const monthResponse = await axios.get(
+          `${STATS_API_URL}/month/${thisMonth}`
+        );
+        setMonthStats(monthResponse.data);
       } catch (err) {
         console.error(
           "Lỗi chi tiết:",
@@ -228,13 +246,9 @@ const StatisticalManagement = ({ setActiveSection }) => {
     },
   };
 
-  // Tính tổng lượt tìm kiếm và người dùng trong tuần
+  // Tính tổng lượt tìm kiếm trong tuần
   const weeklyTotalRequests = dailyStats.reduce(
     (sum, stat) => sum + (stat.totalRequests || 0),
-    0
-  );
-  const weeklyTotalUsers = dailyStats.reduce(
-    (sum, stat) => sum + (stat.uniqueUsers || 0),
     0
   );
 
@@ -345,7 +359,12 @@ const styles = StyleSheet.create({
     color: "#444",
     marginBottom: 10,
   },
-  totalText: { fontSize: 14, color: "#666", marginBottom: 5 },
+  totalText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#4d4d97ff",
+    marginBottom: 5,
+  },
   chartContainer: {
     flex: 2,
     padding: 10,

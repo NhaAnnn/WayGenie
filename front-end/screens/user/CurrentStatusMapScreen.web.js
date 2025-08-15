@@ -18,7 +18,6 @@ import {
 import axios from "axios";
 import { useAuth } from "../../context/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
-import { transportModes } from "../../data/transportCurrentModel";
 import {
   MAPBOX_PUBLIC_ACCESS_TOKEN,
   BACKEND_API_BASE_URL,
@@ -27,6 +26,14 @@ import MapWrapper from "../../components/MapWrapper";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const AIR_QUALITY_API_URL = `${BACKEND_API_BASE_URL}/aqis`;
+
+// Define transportModes without transit
+const transportModes = [
+  { key: "driving", mapboxProfile: "driving", label: "🚗 Ô tô" },
+  { key: "motorcycle", mapboxProfile: "motorcycle", label: "🏍 Xe máy" },
+  { key: "cycling", mapboxProfile: "cycling", label: "🚴‍♂️ Xe đạp" },
+  { key: "walking", mapboxProfile: "walking", label: "🚶‍♂️ Đi bộ" },
+];
 
 export default function CurrentStatusMapScreen({ navigation }) {
   const { user } = useAuth();
@@ -65,12 +72,32 @@ export default function CurrentStatusMapScreen({ navigation }) {
 
   const debounceTimeout = useRef(null);
 
-  // Route preference options
+  // Route preference options with updated allowed modes (removed transit)
   const routePreferences = [
-    { id: "fastest", label: "Nhanh nhất", icon: "rocket" },
-    { id: "shortest", label: "Ngắn nhất", icon: "resize" },
-    { id: "eco", label: "Ít ô nhiễm", icon: "leaf" },
-    { id: "least_emission", label: "Ít phát thải", icon: "cloud" },
+    {
+      id: "fastest",
+      label: "Nhanh nhất",
+      icon: "rocket",
+      allowedModes: ["driving", "walking", "cycling", "motorcycle"],
+    },
+    {
+      id: "shortest",
+      label: "Ngắn nhất",
+      icon: "resize",
+      allowedModes: ["driving", "walking", "cycling", "motorcycle"],
+    },
+    {
+      id: "eco",
+      label: "Ít ô nhiễm",
+      icon: "leaf",
+      allowedModes: ["driving", "walking", "cycling", "motorcycle"],
+    },
+    {
+      id: "least_emission",
+      label: "Ít phát thải",
+      icon: "cloud",
+      allowedModes: ["driving", "motorcycle"],
+    },
   ];
 
   // Fetch route when mode or preference changes
@@ -143,8 +170,7 @@ export default function CurrentStatusMapScreen({ navigation }) {
       driving: 170,
       walking: 0,
       cycling: 0,
-      "driving-traffic": 200,
-      transit: 90,
+      motorcycle: 100,
     };
     return (distanceKm * (emissionFactors[transportMode] || 150)).toFixed(0);
   }, []);
@@ -167,15 +193,13 @@ export default function CurrentStatusMapScreen({ navigation }) {
     try {
       const res = await axios.get(AIR_QUALITY_API_URL, {
         params: {
-          stationName: "", // Không lọc theo stationName để lấy tất cả
+          stationName: "",
         },
       });
       const aqisRecords = res.data;
       if (!aqisRecords || aqisRecords.length === 0) {
         return { pm25: 0 };
       }
-
-      // Tìm trạm gần nhất dựa trên khoảng cách Euclidean
       let nearestStation = null;
       let minDistance = Infinity;
       aqisRecords.forEach((record) => {
@@ -231,10 +255,11 @@ export default function CurrentStatusMapScreen({ navigation }) {
     setRoutes([]);
     setSelectedRouteIndex(0);
     try {
+      const profile = mode === "motorcycle" ? "driving" : mode;
       const startLonLat = `${startCoords[1]},${startCoords[0]}`;
       const endLonLat = `${endCoords[1]},${endCoords[0]}`;
       const res = await axios.get(
-        `https://api.mapbox.com/directions/v5/mapbox/${mode}/${startLonLat};${endLonLat}`,
+        `https://api.mapbox.com/directions/v5/mapbox/${profile}/${startLonLat};${endLonLat}`,
         {
           params: {
             access_token: MAPBOX_PUBLIC_ACCESS_TOKEN,
@@ -242,6 +267,8 @@ export default function CurrentStatusMapScreen({ navigation }) {
             steps: false,
             alternatives: true,
             language: "vi",
+            exclude: mode === "motorcycle" ? "motorway,ferry" : undefined,
+            avoid_maneuver_radius: mode === "motorcycle" ? 100 : undefined,
           },
           timeout: 300000,
         }
@@ -249,13 +276,22 @@ export default function CurrentStatusMapScreen({ navigation }) {
       if (res.data.routes && res.data.routes.length > 0) {
         const routesData = await Promise.all(
           res.data.routes.map(async (route) => {
+            const adjustedDuration =
+              mode === "motorcycle"
+                ? (route.duration / 60) * 0.9
+                : route.duration / 60;
             const [avgLon, avgLat] = calculateAverageCoords(route.geometry);
             const airQuality = await fetchAirQuality(avgLon, avgLat);
             return {
               geometry: route.geometry,
               distance: route.distance,
-              duration: route.duration / 60,
-              emissions: parseFloat(calculateEmissions(route.distance, mode)),
+              duration: adjustedDuration,
+              emissions: parseFloat(
+                calculateEmissions(
+                  route.distance,
+                  mode === "motorcycle" ? "motorcycle" : mode
+                )
+              ),
               pollution: parseFloat(airQuality.pm25.toFixed(1)),
             };
           })
@@ -281,7 +317,12 @@ export default function CurrentStatusMapScreen({ navigation }) {
             console.error("Failed to save search route:", err);
           });
       } else {
-        setError("Không tìm thấy tuyến đường phù hợp");
+        const modeLabel =
+          transportModes.find((m) => m.mapboxProfile === mode || m.key === mode)
+            ?.label || mode;
+        setError(
+          `Không tìm thấy tuyến đường phù hợp cho ${modeLabel}. Vui lòng thử phương thức khác.`
+        );
       }
     } catch (error) {
       setError(
@@ -318,12 +359,13 @@ export default function CurrentStatusMapScreen({ navigation }) {
   };
 
   // Get current mode and criterion labels
-  const currentModeLabel = transportModes.find(
-    (item) => item.mapboxProfile === mode
-  )?.label;
-  const currentCriterionName = routePreferences.find(
-    (pref) => pref.id === routePreference
-  )?.label;
+  const currentModeLabel =
+    transportModes.find(
+      (item) => item.mapboxProfile === mode || item.key === mode
+    )?.label || "Không xác định";
+  const currentCriterionName =
+    routePreferences.find((pref) => pref.id === routePreference)?.label ||
+    "Không xác định";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -434,12 +476,13 @@ export default function CurrentStatusMapScreen({ navigation }) {
                   onPress={() => {
                     setSuggestions([]);
                     setActiveInput(null);
-                    setIsModePanelVisible(true);
+                    setIsCriteriaPanelVisible(true);
                   }}
                 >
                   <Text style={styles.actionButtonText}>
-                    Chế độ: {currentModeLabel}
+                    Tiêu chí: {currentCriterionName}
                   </Text>
+                  <Ionicons name="options" size={18} color="#1976d2" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
@@ -449,13 +492,15 @@ export default function CurrentStatusMapScreen({ navigation }) {
                   onPress={() => {
                     setSuggestions([]);
                     setActiveInput(null);
-                    setIsCriteriaPanelVisible(true);
+                    setIsModePanelVisible(true);
                   }}
                 >
                   <Text style={styles.actionButtonText}>
-                    Tiêu chí: {currentCriterionName}
+                    Chế độ: {currentModeLabel}
                   </Text>
-                  <Ionicons name="options" size={18} color="#1976d2" />
+                  {mode === "motorcycle" && (
+                    <Text style={styles.modeNote}></Text>
+                  )}
                 </TouchableOpacity>
               </View>
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -502,7 +547,7 @@ export default function CurrentStatusMapScreen({ navigation }) {
                       <View style={styles.routeInfoItem}>
                         <Text style={styles.routeInfoLabel}>Thời gian:</Text>
                         <Text style={styles.routeInfoValue}>
-                          {Math.floor(routes[selectedRouteIndex].duration)} phút
+                          {Math.round(routes[selectedRouteIndex].duration)} phút
                         </Text>
                       </View>
                       <View style={styles.routeInfoItem}>
@@ -515,6 +560,9 @@ export default function CurrentStatusMapScreen({ navigation }) {
                           }
                         </Text>
                       </View>
+                      {mode === "motorcycle" && (
+                        <View style={styles.routeInfoItem}></View>
+                      )}
                     </>
                   ) : routePreference === "shortest" ? (
                     <>
@@ -537,6 +585,9 @@ export default function CurrentStatusMapScreen({ navigation }) {
                           }
                         </Text>
                       </View>
+                      {mode === "motorcycle" && (
+                        <View style={styles.routeInfoItem}></View>
+                      )}
                     </>
                   ) : routePreference === "eco" ? (
                     <>
@@ -571,6 +622,9 @@ export default function CurrentStatusMapScreen({ navigation }) {
                           }
                         </Text>
                       </View>
+                      {mode === "motorcycle" && (
+                        <View style={styles.routeInfoItem}></View>
+                      )}
                     </>
                   ) : routePreference === "least_emission" ? (
                     <>
@@ -601,6 +655,9 @@ export default function CurrentStatusMapScreen({ navigation }) {
                           }
                         </Text>
                       </View>
+                      {mode === "motorcycle" && (
+                        <View style={styles.routeInfoItem}></View>
+                      )}
                     </>
                   ) : null}
                 </View>
@@ -654,28 +711,44 @@ export default function CurrentStatusMapScreen({ navigation }) {
                   </TouchableOpacity>
                 </View>
                 <ScrollView style={styles.panelScrollView}>
-                  {transportModes.map((item) => (
-                    <TouchableOpacity
-                      key={item.key}
-                      style={[
-                        styles.panelItem,
-                        Platform.OS === "web" && styles.webCursorPointer,
-                      ]}
-                      onPress={() => {
-                        setMode(item.mapboxProfile);
-                        setIsModePanelVisible(false);
-                      }}
-                    >
-                      <Text style={styles.panelItemText}>{item.label}</Text>
-                      {mode === item.mapboxProfile && (
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={20}
-                          color="#1976d2"
-                        />
-                      )}
-                    </TouchableOpacity>
-                  ))}
+                  {transportModes
+                    .filter((item) =>
+                      routePreferences
+                        .find((pref) => pref.id === routePreference)
+                        ?.allowedModes.includes(
+                          item.key === "motorcycle"
+                            ? "motorcycle"
+                            : item.mapboxProfile
+                        )
+                    )
+                    .map((item) => (
+                      <TouchableOpacity
+                        key={item.key}
+                        style={[
+                          styles.panelItem,
+                          Platform.OS === "web" && styles.webCursorPointer,
+                        ]}
+                        onPress={() => {
+                          setMode(
+                            item.key === "motorcycle"
+                              ? "motorcycle"
+                              : item.mapboxProfile
+                          );
+                          setIsModePanelVisible(false);
+                        }}
+                      >
+                        <Text style={styles.panelItemText}>{item.label}</Text>
+                        {(item.key === "motorcycle" && mode === "motorcycle") ||
+                        (item.mapboxProfile === mode &&
+                          item.key !== "motorcycle") ? (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={20}
+                            color="#1976d2"
+                          />
+                        ) : null}
+                      </TouchableOpacity>
+                    ))}
                 </ScrollView>
               </View>
             </View>
@@ -718,6 +791,12 @@ export default function CurrentStatusMapScreen({ navigation }) {
                       style={[styles.panelItem]}
                       onPress={() => {
                         setRoutePreference(pref.id);
+                        if (
+                          pref.id === "least_emission" &&
+                          !pref.allowedModes.includes(mode)
+                        ) {
+                          setMode("driving");
+                        }
                         setIsCriteriaPanelVisible(false);
                       }}
                     >
@@ -839,6 +918,11 @@ const styles = StyleSheet.create({
     color: "#1976d2",
     marginRight: 5,
     fontWeight: "600",
+  },
+  modeNote: {
+    fontSize: 10,
+    color: "#666",
+    fontStyle: "italic",
   },
   errorText: {
     color: "red",

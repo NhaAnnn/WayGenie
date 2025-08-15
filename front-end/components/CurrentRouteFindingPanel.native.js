@@ -72,7 +72,12 @@ const areGeoJSONsEqual = (geoJSONs1, geoJSONs2) => {
   });
 };
 
-const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
+const RouteFindingPanel = ({
+  onRouteSelected,
+  onClearRoute,
+  disabled,
+  userID, // Nhận userID từ props
+}) => {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [mode, setMode] = useState("driving");
@@ -84,10 +89,26 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
   const [error, setError] = useState("");
   const [availableRoutes, setAvailableRoutes] = useState([]);
   const [routingCriteria] = useState([
-    { id: "fastest", name: "Nhanh nhất" },
-    { id: "shortest", name: "Ngắn nhất" },
-    { id: "least_pollution", name: "Ít ô nhiễm" },
-    { id: "emission", name: "Ít phát thải" },
+    {
+      id: "fastest",
+      name: "Nhanh nhất",
+      allowedModes: ["driving", "walking", "cycling", "motorcycle"],
+    },
+    {
+      id: "shortest",
+      name: "Ngắn nhất",
+      allowedModes: ["driving", "walking", "cycling", "motorcycle"],
+    },
+    {
+      id: "least_pollution",
+      name: "Ít ô nhiễm",
+      allowedModes: ["driving", "walking", "cycling", "motorcycle"],
+    },
+    {
+      id: "emission",
+      name: "Ít phát thải",
+      allowedModes: ["driving", "motorcycle"],
+    },
   ]);
   const [selectedRoutingCriterionId, setSelectedRoutingCriterionId] =
     useState("fastest");
@@ -124,8 +145,6 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
       driving: 170,
       walking: 0,
       cycling: 0,
-      "driving-traffic": 200,
-      transit: 90,
       motorcycle: 100,
     };
     return (distanceKm * (emissionFactors[transportMode] || 150)).toFixed(0);
@@ -212,13 +231,18 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
       return;
     }
 
+    if (!userID) {
+      setError("Vui lòng đăng nhập để tìm kiếm lộ trình.");
+      return;
+    }
+
     setLoading(true);
     setError("");
     setAvailableRoutes([]);
     onClearRoute();
 
     try {
-      const profile = mode;
+      const profile = mode === "motorcycle" ? "driving" : mode;
       const coordinates = `${startCoords[0]},${startCoords[1]};${endCoords[0]},${endCoords[1]}`;
       const response = await axios.get(
         `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordinates}`,
@@ -245,11 +269,14 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
           routes.map(async (route, index) => {
             const adjustedDuration =
               mode === "motorcycle"
-                ? route.duration / 1.2
+                ? (route.duration / 60) * 0.9
                 : route.duration / 60;
             const [avgLon, avgLat] = calculateAverageCoords(route.geometry);
             const airQuality = await fetchAirQuality(avgLon, avgLat);
-            const emissions = calculateEmissions(route.distance / 1000, mode);
+            const emissions = calculateEmissions(
+              route.distance / 1000,
+              mode === "motorcycle" ? "motorcycle" : mode
+            );
             return {
               id: `route-${index}`,
               segmentFeatures: [
@@ -262,6 +289,7 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
                     duration: adjustedDuration,
                     emissions: parseFloat(emissions),
                     pollution: parseFloat(airQuality.pm25.toFixed(1)),
+                    mode: mode === "motorcycle" ? "motorcycle" : mode,
                   },
                 },
               ],
@@ -292,8 +320,48 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
           sortedRoutes[0].id,
           selectedRoutingCriterionId
         );
+        console.log("Route selected after fetch:", {
+          geoJSONRoutesForMap: allRoutesGeoJSON,
+          selectedRouteId: sortedRoutes[0].id,
+          criterion: selectedRoutingCriterionId,
+        });
+
+        // Gửi dữ liệu tìm kiếm lên server
+        const SEARCH_ROUTE_API_URL = `${BACKEND_API_BASE_URL}/search-route`;
+        const dateKey = new Date().toLocaleDateString("en-CA", {
+          timeZone: "Asia/Ho_Chi_Minh",
+        });
+        try {
+          console.log("Sending search route data:", {
+            userID,
+            description: `${start} -> ${end}`,
+            time: new Date().toISOString(),
+            dateKey,
+          });
+          await axios.post(SEARCH_ROUTE_API_URL, {
+            userID,
+            description: `${start} -> ${end}`,
+            time: new Date().toISOString(),
+            dateKey,
+          });
+          console.log("Search route saved successfully");
+        } catch (error) {
+          console.error(
+            "Failed to save search route:",
+            error.response?.data || error.message
+          );
+          // Không đặt setError để tránh làm gián đoạn giao diện
+        }
       } else {
-        setError("Không tìm thấy tuyến đường phù hợp");
+        const modeLabel =
+          transportModes.find(
+            (m) =>
+              m.mapboxProfile === mode ||
+              (m.key === "motorcycle" && mode === "motorcycle")
+          )?.label || mode;
+        setError(
+          `Không tìm thấy tuyến đường phù hợp cho ${modeLabel}. Vui lòng thử phương thức khác.`
+        );
       }
     } catch (error) {
       setError(
@@ -311,6 +379,9 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
     onClearRoute,
     onRouteSelected,
     selectedRoutingCriterionId,
+    userID,
+    start,
+    end,
   ]);
 
   const selectRoute = useCallback(
@@ -327,6 +398,11 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
         route.id,
         selectedRoutingCriterionId
       );
+      console.log("Route selected manually:", {
+        geoJSONRoutesForMap,
+        selectedRouteId: route.id,
+        criterion: selectedRoutingCriterionId,
+      });
     },
     [
       availableRoutes,
@@ -427,8 +503,11 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
 
   const currentModeLabel = useMemo(
     () =>
-      transportModes.find((item) => item.mapboxProfile === mode)?.label ||
-      "Không xác định",
+      transportModes.find(
+        (item) =>
+          item.mapboxProfile === mode ||
+          (item.key === "motorcycle" && mode === "motorcycle")
+      )?.label || "Không xác định",
     [mode]
   );
 
@@ -528,19 +607,6 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
                   Keyboard.dismiss();
                   setSuggestions([]);
                   setActiveInput(null);
-                  setIsModePanelVisible(true);
-                }}
-              >
-                <Text style={styles.actionButtonText}>
-                  Chế độ: {currentModeLabel}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setSuggestions([]);
-                  setActiveInput(null);
                   setIsCriteriaPanelVisible(true);
                 }}
               >
@@ -548,6 +614,19 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
                   Tiêu chí: {currentCriterionName}
                 </Text>
                 <Ionicons name="options" size={18} color="#1976d2" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setSuggestions([]);
+                  setActiveInput(null);
+                  setIsModePanelVisible(true);
+                }}
+              >
+                <Text style={styles.actionButtonText}>
+                  Chế độ: {currentModeLabel}
+                </Text>
               </TouchableOpacity>
             </View>
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -719,6 +798,10 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
                           </View>
                         </>
                       )}
+                      {selectedRoute.segmentFeatures[0].properties.mode ===
+                        "motorcycle" && (
+                        <View style={styles.routeInfoItem}></View>
+                      )}
                     </>
                   );
                 })()}
@@ -766,25 +849,44 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
                 </TouchableOpacity>
               </View>
               <ScrollView style={styles.panelScrollView}>
-                {transportModes.map((item) => (
-                  <TouchableOpacity
-                    key={item.key}
-                    style={styles.panelItem}
-                    onPress={() => {
-                      setMode(item.mapboxProfile);
-                      setIsModePanelVisible(false);
-                    }}
-                  >
-                    <Text style={styles.panelItemText}>{item.label}</Text>
-                    {mode === item.mapboxProfile && (
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={20}
-                        color="#1976d2"
-                      />
-                    )}
-                  </TouchableOpacity>
-                ))}
+                {transportModes
+                  .filter((item) =>
+                    routingCriteria
+                      .find(
+                        (criterion) =>
+                          criterion.id === selectedRoutingCriterionId
+                      )
+                      ?.allowedModes.includes(
+                        item.key === "motorcycle"
+                          ? "motorcycle"
+                          : item.mapboxProfile
+                      )
+                  )
+                  .map((item) => (
+                    <TouchableOpacity
+                      key={item.key}
+                      style={styles.panelItem}
+                      onPress={() => {
+                        setMode(
+                          item.key === "motorcycle"
+                            ? "motorcycle"
+                            : item.mapboxProfile
+                        );
+                        setIsModePanelVisible(false);
+                      }}
+                    >
+                      <Text style={styles.panelItemText}>{item.label}</Text>
+                      {(item.key === "motorcycle" && mode === "motorcycle") ||
+                      (item.mapboxProfile === mode &&
+                        item.key !== "motorcycle") ? (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={20}
+                          color="#1976d2"
+                        />
+                      ) : null}
+                    </TouchableOpacity>
+                  ))}
               </ScrollView>
             </View>
           </View>
@@ -820,6 +922,12 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
                     style={styles.panelItem}
                     onPress={() => {
                       setSelectedRoutingCriterionId(criterion.id);
+                      if (
+                        criterion.id === "emission" &&
+                        !criterion.allowedModes.includes(mode)
+                      ) {
+                        setMode("driving");
+                      }
                       setIsCriteriaPanelVisible(false);
                       if (availableRoutes.length > 0) {
                         const sortedRoutes = sortRoutesByPreference(
@@ -839,6 +947,11 @@ const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
                           sortedRoutes[0].id,
                           criterion.id
                         );
+                        console.log("Route selected after criterion change:", {
+                          geoJSONRoutesForMap,
+                          selectedRouteId: sortedRoutes[0].id,
+                          criterion: criterion.id,
+                        });
                       }
                     }}
                   >
@@ -946,6 +1059,11 @@ const styles = StyleSheet.create({
     marginRight: 5,
     fontWeight: "600",
   },
+  modeNote: {
+    fontSize: 10,
+    color: "#666",
+    fontStyle: "italic",
+  },
   errorText: { color: "red", marginTop: 10, textAlign: "center" },
   suggestedRoutesContainer: {
     marginTop: 15,
@@ -1029,28 +1147,6 @@ const styles = StyleSheet.create({
     borderBottomColor: "#f0f0f0",
   },
   panelItemText: { fontSize: 16, color: "#333" },
-  routeInfoContainer: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 15,
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: "#eee",
-  },
-  routeInfoItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  routeInfoLabel: {
-    fontSize: 16,
-    color: "#666",
-  },
-  routeInfoValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-  },
 });
 
 export default RouteFindingPanel;

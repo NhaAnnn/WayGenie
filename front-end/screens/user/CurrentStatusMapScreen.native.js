@@ -1,7 +1,14 @@
-import React, { useState, useCallback, useRef, useMemo } from "react";
+import React, {
+  useState,
+  useCallback,
+  useRef,
+  useMemo,
+  useEffect,
+} from "react";
 import { View, StyleSheet, Alert } from "react-native";
 import MapWrapper from "../../components/MapWrapper.native";
 import RouteFindingPanel from "../../components/CurrentRouteFindingPanel.native";
+import { useAuth } from "../../context/AuthContext"; // Thêm import AuthContext
 
 // Hàm so sánh sâu tọa độ
 const areCoordsEqual = (coords1, coords2) => {
@@ -46,6 +53,9 @@ const processGeoJSONs = (geoJSONs) => {
 };
 
 const CurrentStatusMapScreen = () => {
+  const { user } = useAuth(); // Lấy user từ AuthContext
+  const userID = user?.id; // Lấy userID
+
   const [routeStartCoords, setRouteStartCoords] = useState(null);
   const [endCoords, setEndCoords] = useState(null);
   const [allRoutesGeoJSONs, setAllRoutesGeoJSONs] = useState(null);
@@ -85,6 +95,12 @@ const CurrentStatusMapScreen = () => {
 
   const onRouteSelected = useCallback(
     (startCoords, endCoords, geoJSONs, newSelectedRouteId, preference) => {
+      console.log("onRouteSelected called:", {
+        startCoords,
+        endCoords,
+        newSelectedRouteId,
+        preference,
+      });
       if (
         areCoordsEqual(startCoords, routeStartCoords) &&
         areCoordsEqual(endCoords, endCoords) &&
@@ -92,10 +108,12 @@ const CurrentStatusMapScreen = () => {
         newSelectedRouteId === selectedRouteId &&
         preference === routePreference
       ) {
+        console.log("No changes detected, skipping update");
         return;
       }
 
       if (!mapLoaded || !mapRef.current || isError) {
+        console.log("Map not loaded or error, setting state only");
         setRouteStartCoords(startCoords);
         setEndCoords(endCoords);
         setAllRoutesGeoJSONs(geoJSONs);
@@ -111,6 +129,7 @@ const CurrentStatusMapScreen = () => {
       }
 
       const processedRouteGeoJSONs = processGeoJSONs(geoJSONs);
+      console.log("Processed GeoJSONs:", processedRouteGeoJSONs);
 
       if (processedRouteGeoJSONs.length > 0) {
         setRouteStartCoords(startCoords);
@@ -156,14 +175,24 @@ const CurrentStatusMapScreen = () => {
   }, []);
 
   const routeGeoJSONs = useMemo(() => {
-    return allRoutesGeoJSONs; // Hiển thị tất cả tuyến đường
+    return allRoutesGeoJSONs;
   }, [allRoutesGeoJSONs, highlightedRouteGeoJSONs]);
+
+  useEffect(() => {
+    if (mapLoaded && selectedRouteId && mapRef.current) {
+      console.log(
+        "Selected route changed, updating map camera:",
+        selectedRouteId
+      );
+      mapRef.current.fitCameraToRoute();
+    }
+  }, [selectedRouteId, mapLoaded]);
 
   return (
     <View style={styles.container}>
       <MapWrapper
         ref={mapRef}
-        initialCenter={[105.85367, 21.030708]} // Hà Nội trung tâm
+        initialCenter={[105.85367, 21.030708]}
         initialZoom={12}
         styleURL="mapbox://styles/mapbox/streets-v11"
         onMapLoaded={onMapLoaded}
@@ -178,6 +207,7 @@ const CurrentStatusMapScreen = () => {
         selectedRouteId={selectedRouteId}
         routeGeoJSONs={allRoutesGeoJSONs}
         routePreference={routePreference}
+        userID={userID} // Truyền userID vào RouteFindingPanel
       />
     </View>
   );
