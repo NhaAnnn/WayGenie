@@ -163,6 +163,21 @@ export default function CurrentStatusMapScreen({ navigation }) {
     setActiveInput(null);
   };
 
+  // Clear input for start or end
+  const clearInput = (inputType) => {
+    if (inputType === "start") {
+      setStart("");
+      setStartCoords(null);
+    } else {
+      setEnd("");
+      setEndCoords(null);
+    }
+    setSuggestions([]);
+    setActiveInput(null);
+    setRoutes([]);
+    setSelectedRouteIndex(0);
+  };
+
   // Calculate emissions for a route
   const calculateEmissions = useCallback((distance, transportMode) => {
     const distanceKm = distance / 1000;
@@ -248,6 +263,14 @@ export default function CurrentStatusMapScreen({ navigation }) {
   const fetchRoute = async () => {
     if (!startCoords || !endCoords || !userId) {
       setError("Vui lòng chọn điểm đi và điểm đến, hoặc đăng nhập.");
+      return;
+    }
+    // Kiểm tra nếu điểm đầu và điểm cuối trùng nhau
+    if (startCoords[0] === endCoords[0] && startCoords[1] === endCoords[1]) {
+      setError("Điểm đi không được trùng với điểm đến.");
+      setRoutes([]);
+      setSelectedRouteIndex(0);
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -403,20 +426,30 @@ export default function CurrentStatusMapScreen({ navigation }) {
               <Text style={styles.title}>WayGenie 🚀</Text>
               <View style={styles.inputContainer}>
                 <View style={styles.inputGroup}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="📍 Điểm đi"
-                    value={start}
-                    onChangeText={(text) => {
-                      setStart(text);
-                      handleAutocomplete(text, "start");
-                    }}
-                    onFocus={() => {
-                      setIsModePanelVisible(false);
-                      setIsCriteriaPanelVisible(false);
-                    }}
-                    placeholderTextColor="#888"
-                  />
+                  <View style={styles.inputWrapper}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="📍 Điểm đi"
+                      value={start}
+                      onChangeText={(text) => {
+                        setStart(text);
+                        handleAutocomplete(text, "start");
+                      }}
+                      onFocus={() => {
+                        setIsModePanelVisible(false);
+                        setIsCriteriaPanelVisible(false);
+                      }}
+                      placeholderTextColor="#888"
+                    />
+                    {start.length > 0 && (
+                      <TouchableOpacity
+                        style={styles.clearButton}
+                        onPress={() => clearInput("start")}
+                      >
+                        <Ionicons name="close-circle" size={20} color="#888" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   {activeInput === "start" && suggestions.length > 0 && (
                     <ScrollView
                       style={styles.suggestionListRelative}
@@ -435,20 +468,30 @@ export default function CurrentStatusMapScreen({ navigation }) {
                   )}
                 </View>
                 <View style={styles.inputGroup}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="🏁 Điểm đến"
-                    value={end}
-                    onChangeText={(text) => {
-                      setEnd(text);
-                      handleAutocomplete(text, "end");
-                    }}
-                    onFocus={() => {
-                      setIsModePanelVisible(false);
-                      setIsCriteriaPanelVisible(false);
-                    }}
-                    placeholderTextColor="#888"
-                  />
+                  <View style={styles.inputWrapper}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="🏁 Điểm đến"
+                      value={end}
+                      onChangeText={(text) => {
+                        setEnd(text);
+                        handleAutocomplete(text, "end");
+                      }}
+                      onFocus={() => {
+                        setIsModePanelVisible(false);
+                        setIsCriteriaPanelVisible(false);
+                      }}
+                      placeholderTextColor="#888"
+                    />
+                    {end.length > 0 && (
+                      <TouchableOpacity
+                        style={styles.clearButton}
+                        onPress={() => clearInput("end")}
+                      >
+                        <Ionicons name="close-circle" size={20} color="#888" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   {activeInput === "end" && suggestions.length > 0 && (
                     <ScrollView
                       style={styles.suggestionListRelative}
@@ -540,9 +583,14 @@ export default function CurrentStatusMapScreen({ navigation }) {
                   </ScrollView>
                 </View>
               )}
-              {routes.length > 0 && (
-                <View style={styles.routeInfoContainer}>
-                  {routePreference === "fastest" ? (
+              <View style={styles.routeInfoContainer}>
+                {startCoords &&
+                endCoords &&
+                startCoords[0] === endCoords[0] &&
+                startCoords[1] === endCoords[1] ? (
+                  <View style={styles.routeInfoItem}></View>
+                ) : routes.length > 0 ? (
+                  routePreference === "fastest" ? (
                     <>
                       <View style={styles.routeInfoItem}>
                         <Text style={styles.routeInfoLabel}>Thời gian:</Text>
@@ -659,9 +707,9 @@ export default function CurrentStatusMapScreen({ navigation }) {
                         <View style={styles.routeInfoItem}></View>
                       )}
                     </>
-                  ) : null}
-                </View>
-              )}
+                  ) : null
+                ) : null}
+              </View>
             </ScrollView>
           </TouchableWithoutFeedback>
         ) : null}
@@ -870,15 +918,23 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1, paddingBottom: 5 },
   inputContainer: { marginBottom: 10 },
   inputGroup: { marginBottom: 5, position: "relative" },
-  input: {
-    height: 40,
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
     borderColor: "#ddd",
     borderWidth: 1,
     borderRadius: 10,
+    backgroundColor: "#f9f9f9",
+  },
+  input: {
+    flex: 1,
+    height: 40,
     paddingHorizontal: 15,
     fontSize: 16,
     color: "#333",
-    backgroundColor: "#f9f9f9",
+  },
+  clearButton: {
+    padding: 10,
   },
   suggestionListRelative: {
     backgroundColor: "#fff",

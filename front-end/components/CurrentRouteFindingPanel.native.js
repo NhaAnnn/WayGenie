@@ -72,12 +72,7 @@ const areGeoJSONsEqual = (geoJSONs1, geoJSONs2) => {
   });
 };
 
-const RouteFindingPanel = ({
-  onRouteSelected,
-  onClearRoute,
-  disabled,
-  userID, // Nhận userID từ props
-}) => {
+const RouteFindingPanel = ({ onRouteSelected, onClearRoute, disabled }) => {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [mode, setMode] = useState("driving");
@@ -137,6 +132,22 @@ const RouteFindingPanel = ({
       setSuggestions([]);
     }
   }, [debouncedEndText, activeInput]);
+
+  // Clear input for start or end
+  const clearInput = (inputType) => {
+    if (inputType === "start") {
+      setStart("");
+      setStartCoords(null);
+    } else {
+      setEnd("");
+      setEndCoords(null);
+    }
+    setSuggestions([]);
+    setActiveInput(null);
+    setAvailableRoutes([]);
+    setSelectedRouteId(null);
+    onClearRoute();
+  };
 
   // Calculate emissions
   const calculateEmissions = (distance, transportMode) => {
@@ -228,19 +239,25 @@ const RouteFindingPanel = ({
   const fetchRoute = useCallback(async () => {
     if (!startCoords || !endCoords) {
       setError("Vui lòng chọn điểm đi và điểm đến.");
+      setAvailableRoutes([]); // Đảm bảo không có lộ trình gợi ý
+      setSelectedRouteId(null);
+      onClearRoute();
+      setLoading(false);
       return;
     }
-
-    if (!userID) {
-      setError("Vui lòng đăng nhập để tìm kiếm lộ trình.");
+    // Kiểm tra nếu điểm đầu và điểm cuối trùng nhau
+    if (areCoordsEqual(startCoords, endCoords)) {
+      setError("Điểm đi không được trùng với điểm đến.");
+      setAvailableRoutes([]); // Ẩn danh sách lộ trình gợi ý
+      setSelectedRouteId(null);
+      onClearRoute(); // Xóa tuyến đường trên bản đồ
+      setLoading(false);
       return;
     }
-
     setLoading(true);
     setError("");
     setAvailableRoutes([]);
     onClearRoute();
-
     try {
       const profile = mode === "motorcycle" ? "driving" : mode;
       const coordinates = `${startCoords[0]},${startCoords[1]};${endCoords[0]},${endCoords[1]}`;
@@ -261,9 +278,7 @@ const RouteFindingPanel = ({
           timeout: 30000,
         }
       );
-
       const { routes } = response.data;
-
       if (routes && routes.length > 0) {
         const processedRoutes = await Promise.all(
           routes.map(async (route, index) => {
@@ -300,18 +315,15 @@ const RouteFindingPanel = ({
             };
           })
         );
-
         const sortedRoutes = sortRoutesByPreference(
           processedRoutes,
           selectedRoutingCriterionId
         );
         setAvailableRoutes(sortedRoutes);
-
         const allRoutesGeoJSON = sortedRoutes.map((route) => ({
           type: "FeatureCollection",
           features: route.segmentFeatures,
         }));
-
         setSelectedRouteId(sortedRoutes[0].id);
         onRouteSelected(
           startCoords,
@@ -325,33 +337,6 @@ const RouteFindingPanel = ({
           selectedRouteId: sortedRoutes[0].id,
           criterion: selectedRoutingCriterionId,
         });
-
-        // Gửi dữ liệu tìm kiếm lên server
-        const SEARCH_ROUTE_API_URL = `${BACKEND_API_BASE_URL}/search-route`;
-        const dateKey = new Date().toLocaleDateString("en-CA", {
-          timeZone: "Asia/Ho_Chi_Minh",
-        });
-        try {
-          console.log("Sending search route data:", {
-            userID,
-            description: `${start} -> ${end}`,
-            time: new Date().toISOString(),
-            dateKey,
-          });
-          await axios.post(SEARCH_ROUTE_API_URL, {
-            userID,
-            description: `${start} -> ${end}`,
-            time: new Date().toISOString(),
-            dateKey,
-          });
-          console.log("Search route saved successfully");
-        } catch (error) {
-          console.error(
-            "Failed to save search route:",
-            error.response?.data || error.message
-          );
-          // Không đặt setError để tránh làm gián đoạn giao diện
-        }
       } else {
         const modeLabel =
           transportModes.find(
@@ -362,6 +347,7 @@ const RouteFindingPanel = ({
         setError(
           `Không tìm thấy tuyến đường phù hợp cho ${modeLabel}. Vui lòng thử phương thức khác.`
         );
+        setAvailableRoutes([]); // Đảm bảo không có lộ trình gợi ý
       }
     } catch (error) {
       setError(
@@ -369,6 +355,7 @@ const RouteFindingPanel = ({
           error.message ||
           "Lỗi khi tìm tuyến đường"
       );
+      setAvailableRoutes([]); // Đảm bảo không có lộ trình gợi ý khi có lỗi
     } finally {
       setLoading(false);
     }
@@ -379,9 +366,6 @@ const RouteFindingPanel = ({
     onClearRoute,
     onRouteSelected,
     selectedRoutingCriterionId,
-    userID,
-    start,
-    end,
   ]);
 
   const selectRoute = useCallback(
@@ -534,20 +518,30 @@ const RouteFindingPanel = ({
           >
             <View style={styles.inputContainer}>
               <View style={styles.inputGroup}>
-                <TextInput
-                  ref={startInputRef}
-                  style={styles.input}
-                  placeholder="📍 Điểm đi"
-                  value={start}
-                  onChangeText={setStart}
-                  onFocus={() => {
-                    setActiveInput("start");
-                    setSuggestions([]);
-                    setIsModePanelVisible(false);
-                    setIsCriteriaPanelVisible(false);
-                  }}
-                  placeholderTextColor="#888"
-                />
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    ref={startInputRef}
+                    style={styles.input}
+                    placeholder="📍 Điểm đi"
+                    value={start}
+                    onChangeText={setStart}
+                    onFocus={() => {
+                      setActiveInput("start");
+                      setSuggestions([]);
+                      setIsModePanelVisible(false);
+                      setIsCriteriaPanelVisible(false);
+                    }}
+                    placeholderTextColor="#888"
+                  />
+                  {start.length > 0 && (
+                    <TouchableOpacity
+                      style={styles.clearButton}
+                      onPress={() => clearInput("start")}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#888" />
+                    </TouchableOpacity>
+                  )}
+                </View>
                 {activeInput === "start" && suggestions.length > 0 && (
                   <ScrollView
                     style={styles.suggestionListRelative}
@@ -567,20 +561,30 @@ const RouteFindingPanel = ({
                 )}
               </View>
               <View style={styles.inputGroup}>
-                <TextInput
-                  ref={endInputRef}
-                  style={styles.input}
-                  placeholder="🏁 Điểm đến"
-                  value={end}
-                  onChangeText={setEnd}
-                  onFocus={() => {
-                    setActiveInput("end");
-                    setSuggestions([]);
-                    setIsModePanelVisible(false);
-                    setIsCriteriaPanelVisible(false);
-                  }}
-                  placeholderTextColor="#888"
-                />
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    ref={endInputRef}
+                    style={styles.input}
+                    placeholder="🏁 Điểm đến"
+                    value={end}
+                    onChangeText={setEnd}
+                    onFocus={() => {
+                      setActiveInput("end");
+                      setSuggestions([]);
+                      setIsModePanelVisible(false);
+                      setIsCriteriaPanelVisible(false);
+                    }}
+                    placeholderTextColor="#888"
+                  />
+                  {end.length > 0 && (
+                    <TouchableOpacity
+                      style={styles.clearButton}
+                      onPress={() => clearInput("end")}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#888" />
+                    </TouchableOpacity>
+                  )}
+                </View>
                 {activeInput === "end" && suggestions.length > 0 && (
                   <ScrollView
                     style={styles.suggestionListRelative}
@@ -630,183 +634,211 @@ const RouteFindingPanel = ({
               </TouchableOpacity>
             </View>
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
-            {availableRoutes.length > 0 && (
-              <View style={styles.suggestedRoutesContainer}>
-                <Text style={styles.suggestedRoutesTitle}>
-                  Các Lộ trình Gợi ý:
-                </Text>
-                <ScrollView
-                  style={styles.suggestedRoutesList}
-                  nestedScrollEnabled
-                >
-                  {availableRoutes.map((route, index) => (
-                    <TouchableOpacity
-                      key={`route-${route.id}-${index}`}
-                      style={[
-                        styles.suggestedRouteItem,
-                        selectedRouteId === route.id &&
-                          styles.routeOptionSelected,
-                      ]}
-                      onPress={() => {
-                        selectRoute(route);
-                      }}
-                    >
-                      <Text style={styles.suggestedRouteText}>
-                        <Text>{`Lộ trình ${index + 1}: `}</Text>
-                        <Text style={styles.routeDetailHighlight}>
-                          {route.metrics.distance.toFixed(2)} km
+            {availableRoutes.length > 0 &&
+              !areCoordsEqual(startCoords, endCoords) && (
+                <View style={styles.suggestedRoutesContainer}>
+                  <Text style={styles.suggestedRoutesTitle}>
+                    Các Lộ trình Gợi ý:
+                  </Text>
+                  <ScrollView
+                    style={styles.suggestedRoutesList}
+                    nestedScrollEnabled
+                  >
+                    {availableRoutes.map((route, index) => (
+                      <TouchableOpacity
+                        key={`route-${route.id}-${index}`}
+                        style={[
+                          styles.suggestedRouteItem,
+                          selectedRouteId === route.id &&
+                            styles.routeOptionSelected,
+                        ]}
+                        onPress={() => {
+                          selectRoute(route);
+                        }}
+                      >
+                        <Text style={styles.suggestedRouteText}>
+                          <Text>{`Lộ trình ${index + 1}: `}</Text>
+                          <Text style={styles.routeDetailHighlight}>
+                            {route.metrics.distance.toFixed(2)} km
+                          </Text>
+                          <Text>{` (`}</Text>
+                          <Text style={styles.routeDetailHighlight}>
+                            {Math.round(route.metrics.time)} phút
+                          </Text>
+                          <Text>{`)`}</Text>
                         </Text>
-                        <Text>{` (`}</Text>
-                        <Text style={styles.routeDetailHighlight}>
-                          {Math.round(route.metrics.time)} phút
-                        </Text>
-                        <Text>{`)`}</Text>
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-            {availableRoutes.length > 0 && selectedRouteId && (
-              <View style={styles.routeInfoContainer}>
-                {(() => {
-                  const selectedRoute = availableRoutes.find(
-                    (route) => route.id === selectedRouteId
-                  );
-                  if (!selectedRoute) return null;
-                  return (
-                    <>
-                      {selectedRoutingCriterionId === "fastest" && (
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            <View style={styles.routeInfoContainer}>
+              {startCoords &&
+              endCoords &&
+              areCoordsEqual(startCoords, endCoords) ? (
+                <View style={styles.routeInfoItem}>
+                  <Text style={styles.errorText}>
+                    Điểm đi không được trùng với điểm đến
+                  </Text>
+                </View>
+              ) : (
+                availableRoutes.length > 0 &&
+                selectedRouteId && (
+                  <View style={styles.routeInfoContainer}>
+                    {(() => {
+                      const selectedRoute = availableRoutes.find(
+                        (route) => route.id === selectedRouteId
+                      );
+                      if (!selectedRoute) return null;
+                      return (
                         <>
-                          <View style={styles.routeInfoItem}>
-                            <Text style={styles.routeInfoLabel}>
-                              Thời gian:
-                            </Text>
-                            <Text style={styles.routeInfoValue}>
-                              {Math.round(
-                                selectedRoute.segmentFeatures[0].properties
-                                  .duration
-                              )}{" "}
-                              phút
-                            </Text>
-                          </View>
-                          <View style={styles.routeInfoItem}>
-                            <Text style={styles.routeInfoLabel}>Ưu tiên:</Text>
-                            <Text style={styles.routeInfoValue}>
-                              {
-                                routingCriteria.find(
-                                  (c) => c.id === selectedRoutingCriterionId
-                                )?.name
-                              }
-                            </Text>
-                          </View>
-                        </>
-                      )}
-                      {selectedRoutingCriterionId === "shortest" && (
-                        <>
-                          <View style={styles.routeInfoItem}>
-                            <Text style={styles.routeInfoLabel}>Độ dài:</Text>
-                            <Text style={styles.routeInfoValue}>
-                              {selectedRoute.segmentFeatures[0].properties.distance.toFixed(
-                                1
-                              )}{" "}
-                              km
-                            </Text>
-                          </View>
-                          <View style={styles.routeInfoItem}>
-                            <Text style={styles.routeInfoLabel}>Ưu tiên:</Text>
-                            <Text style={styles.routeInfoValue}>
-                              {
-                                routingCriteria.find(
-                                  (c) => c.id === selectedRoutingCriterionId
-                                )?.name
-                              }
-                            </Text>
-                          </View>
-                        </>
-                      )}
-                      {selectedRoutingCriterionId === "least_pollution" && (
-                        <>
-                          <View style={styles.routeInfoItem}>
-                            <Text style={styles.routeInfoLabel}>Độ dài:</Text>
-                            <Text style={styles.routeInfoValue}>
-                              {selectedRoute.segmentFeatures[0].properties.distance.toFixed(
-                                1
-                              )}{" "}
-                              km
-                            </Text>
-                          </View>
-                          <View style={styles.routeInfoItem}>
-                            <Text style={styles.routeInfoLabel}>
-                              Độ ô nhiễm:
-                            </Text>
-                            <Text style={styles.routeInfoValue}>
-                              {(
-                                selectedRoute.segmentFeatures[0].properties
-                                  .pollution *
-                                  (1.8 *
+                          {selectedRoutingCriterionId === "fastest" && (
+                            <>
+                              <View style={styles.routeInfoItem}>
+                                <Text style={styles.routeInfoLabel}>
+                                  Thời gian:
+                                </Text>
+                                <Text style={styles.routeInfoValue}>
+                                  {Math.round(
                                     selectedRoute.segmentFeatures[0].properties
-                                      .distance) || 0
-                              ).toFixed(1)}{" "}
-                              µg/m³
-                            </Text>
-                          </View>
-                          <View style={styles.routeInfoItem}>
-                            <Text style={styles.routeInfoLabel}>Ưu tiên:</Text>
-                            <Text style={styles.routeInfoValue}>
-                              {
-                                routingCriteria.find(
-                                  (c) => c.id === selectedRoutingCriterionId
-                                )?.name
-                              }
-                            </Text>
-                          </View>
+                                      .duration
+                                  )}{" "}
+                                  phút
+                                </Text>
+                              </View>
+                              <View style={styles.routeInfoItem}>
+                                <Text style={styles.routeInfoLabel}>
+                                  Ưu tiên:
+                                </Text>
+                                <Text style={styles.routeInfoValue}>
+                                  {
+                                    routingCriteria.find(
+                                      (c) => c.id === selectedRoutingCriterionId
+                                    )?.name
+                                  }
+                                </Text>
+                              </View>
+                            </>
+                          )}
+                          {selectedRoutingCriterionId === "shortest" && (
+                            <>
+                              <View style={styles.routeInfoItem}>
+                                <Text style={styles.routeInfoLabel}>
+                                  Độ dài:
+                                </Text>
+                                <Text style={styles.routeInfoValue}>
+                                  {selectedRoute.segmentFeatures[0].properties.distance.toFixed(
+                                    1
+                                  )}{" "}
+                                  km
+                                </Text>
+                              </View>
+                              <View style={styles.routeInfoItem}>
+                                <Text style={styles.routeInfoLabel}>
+                                  Ưu tiên:
+                                </Text>
+                                <Text style={styles.routeInfoValue}>
+                                  {
+                                    routingCriteria.find(
+                                      (c) => c.id === selectedRoutingCriterionId
+                                    )?.name
+                                  }
+                                </Text>
+                              </View>
+                            </>
+                          )}
+                          {selectedRoutingCriterionId === "least_pollution" && (
+                            <>
+                              <View style={styles.routeInfoItem}>
+                                <Text style={styles.routeInfoLabel}>
+                                  Độ dài:
+                                </Text>
+                                <Text style={styles.routeInfoValue}>
+                                  {selectedRoute.segmentFeatures[0].properties.distance.toFixed(
+                                    1
+                                  )}{" "}
+                                  km
+                                </Text>
+                              </View>
+                              <View style={styles.routeInfoItem}>
+                                <Text style={styles.routeInfoLabel}>
+                                  Độ ô nhiễm:
+                                </Text>
+                                <Text style={styles.routeInfoValue}>
+                                  {(
+                                    selectedRoute.segmentFeatures[0].properties
+                                      .pollution *
+                                      (1.8 *
+                                        selectedRoute.segmentFeatures[0]
+                                          .properties.distance) || 0
+                                  ).toFixed(1)}{" "}
+                                  µg/m³
+                                </Text>
+                              </View>
+                              <View style={styles.routeInfoItem}>
+                                <Text style={styles.routeInfoLabel}>
+                                  Ưu tiên:
+                                </Text>
+                                <Text style={styles.routeInfoValue}>
+                                  {
+                                    routingCriteria.find(
+                                      (c) => c.id === selectedRoutingCriterionId
+                                    )?.name
+                                  }
+                                </Text>
+                              </View>
+                            </>
+                          )}
+                          {selectedRoutingCriterionId === "emission" && (
+                            <>
+                              <View style={styles.routeInfoItem}>
+                                <Text style={styles.routeInfoLabel}>
+                                  Độ dài:
+                                </Text>
+                                <Text style={styles.routeInfoValue}>
+                                  {selectedRoute.segmentFeatures[0].properties.distance.toFixed(
+                                    1
+                                  )}{" "}
+                                  km
+                                </Text>
+                              </View>
+                              <View style={styles.routeInfoItem}>
+                                <Text style={styles.routeInfoLabel}>
+                                  Lượng khí thải:
+                                </Text>
+                                <Text style={styles.routeInfoValue}>
+                                  {
+                                    selectedRoute.segmentFeatures[0].properties
+                                      .emissions
+                                  }{" "}
+                                  g CO2
+                                </Text>
+                              </View>
+                              <View style={styles.routeInfoItem}>
+                                <Text style={styles.routeInfoLabel}>
+                                  Ưu tiên:
+                                </Text>
+                                <Text style={styles.routeInfoValue}>
+                                  {
+                                    routingCriteria.find(
+                                      (c) => c.id === selectedRoutingCriterionId
+                                    )?.name
+                                  }
+                                </Text>
+                              </View>
+                            </>
+                          )}
+                          {selectedRoute.segmentFeatures[0].properties.mode ===
+                            "motorcycle" && (
+                            <View style={styles.routeInfoItem}></View>
+                          )}
                         </>
-                      )}
-                      {selectedRoutingCriterionId === "emission" && (
-                        <>
-                          <View style={styles.routeInfoItem}>
-                            <Text style={styles.routeInfoLabel}>Độ dài:</Text>
-                            <Text style={styles.routeInfoValue}>
-                              {selectedRoute.segmentFeatures[0].properties.distance.toFixed(
-                                1
-                              )}{" "}
-                              km
-                            </Text>
-                          </View>
-                          <View style={styles.routeInfoItem}>
-                            <Text style={styles.routeInfoLabel}>
-                              Lượng khí thải:
-                            </Text>
-                            <Text style={styles.routeInfoValue}>
-                              {
-                                selectedRoute.segmentFeatures[0].properties
-                                  .emissions
-                              }{" "}
-                              g CO2
-                            </Text>
-                          </View>
-                          <View style={styles.routeInfoItem}>
-                            <Text style={styles.routeInfoLabel}>Ưu tiên:</Text>
-                            <Text style={styles.routeInfoValue}>
-                              {
-                                routingCriteria.find(
-                                  (c) => c.id === selectedRoutingCriterionId
-                                )?.name
-                              }
-                            </Text>
-                          </View>
-                        </>
-                      )}
-                      {selectedRoute.segmentFeatures[0].properties.mode ===
-                        "motorcycle" && (
-                        <View style={styles.routeInfoItem}></View>
-                      )}
-                    </>
-                  );
-                })()}
-              </View>
-            )}
+                      );
+                    })()}
+                  </View>
+                )
+              )}
+            </View>
           </ScrollView>
         </TouchableWithoutFeedback>
       ) : null}
@@ -1008,15 +1040,23 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1, paddingBottom: 5 },
   inputContainer: { marginBottom: 10 },
   inputGroup: { marginBottom: 5, position: "relative" },
-  input: {
-    height: 40,
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
     borderColor: "#ddd",
     borderWidth: 1,
     borderRadius: 10,
+    backgroundColor: "#f9f9f9",
+  },
+  input: {
+    flex: 1,
+    height: 40,
     paddingHorizontal: 15,
     fontSize: 16,
     color: "#333",
-    backgroundColor: "#f9f9f9",
+  },
+  clearButton: {
+    padding: 10,
   },
   suggestionListRelative: {
     left: 0,
@@ -1147,6 +1187,28 @@ const styles = StyleSheet.create({
     borderBottomColor: "#f0f0f0",
   },
   panelItemText: { fontSize: 16, color: "#333" },
+  routeInfoContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 15,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#eee",
+  },
+  routeInfoItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  routeInfoLabel: {
+    fontSize: 16,
+    color: "#666",
+  },
+  routeInfoValue: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+  },
 });
 
 export default RouteFindingPanel;
